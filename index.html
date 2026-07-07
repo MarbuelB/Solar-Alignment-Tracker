@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Solar Alignment Tracker</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
+    <script src="libs/suncalc.min.js"></script>
+    <script src="libs/tz.js"></script>
     <script src="config.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -52,6 +53,21 @@
         </div>
     </div>
 
+    <div id="custom_location_inputs" class="full-ui-element" style="display: grid; grid-template-columns: 1fr 1fr 4fr; gap: 15px; background: rgba(49, 130, 206, 0.05); padding: 15px; border-radius: 6px; border: 1px dashed var(--primary-color); margin-bottom: 20px;">
+        <div class="form-group">
+            <label for="custom_lat">Latitude</label>
+            <input type="number" id="custom_lat" step="any" placeholder="e.g. 47.56" onchange="updateCustomProfile()">
+        </div>
+        <div class="form-group">
+            <label for="custom_lng">Longitude</label>
+            <input type="number" id="custom_lng" step="any" placeholder="e.g. 7.58" onchange="updateCustomProfile()">
+        </div>
+        <div class="form-group">
+            <label for="custom_targets">Targets (Name:Azimuth, comma sep)</label>
+            <input type="text" id="custom_targets" placeholder="e.g. Az1:90, 180, 270" onchange="updateCustomProfile()">
+        </div>
+    </div>
+
     <div class="full-ui-element actions">
         <button class="btn-primary" onclick="calculateSolarTransits()">Refresh Data</button>
         <button class="btn-secondary" onclick="exportCSV()">Export Data</button>
@@ -69,11 +85,20 @@
             <h3 style="margin:0 0 10px 0; font-size: 1rem;">Real-time Horizon Alignment</h3>
             
             <div class="radar-controls">
-                <label class="radar-live-label">
+                <label class="radar-live-label" style="align-self: flex-start; margin-bottom: 5px;">
                     <input type="checkbox" id="radar_live_check" checked onchange="toggleRadarLiveMode()"> 
                     Live Tracking (Now)
                 </label>
-                <input type="datetime-local" id="radar_time_input" class="radar-time-input" disabled onchange="updateLiveRadarPosition()">
+                <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <label for="radar_local_time" style="font-size: 0.75rem; margin:0;">Local Time (You)</label>
+                        <input type="datetime-local" id="radar_local_time" class="radar-time-input" style="width: 60%;" disabled onchange="handleTimeEdit('local')">
+                    </div>
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <label for="radar_dest_time" style="font-size: 0.75rem; margin:0;">Dest. Time (GPS)</label>
+                        <input type="datetime-local" id="radar_dest_time" class="radar-time-input" style="width: 60%;" disabled onchange="handleTimeEdit('dest')">
+                    </div>
+                </div>
             </div>
 
             <svg class="compass-svg" id="compass_radar" viewBox="0 0 200 200">
@@ -97,16 +122,98 @@
     });
 
     function initializeApplicationState() {
+        let currentRadarAbsoluteTime = new Date();
+
+        window.getDestIsoString = function(dateObj, tz) {
+            try {
+                const parts = new Intl.DateTimeFormat('en-US', {
+                    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit', hour12: false
+                }).formatToParts(dateObj);
+                
+                let p = {};
+                parts.forEach(part => { p[part.type] = part.value; });
+                if (p.hour === '24') p.hour = '00';
+                
+                return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+            } catch(e) {
+                const offsetMs = dateObj.getTimezoneOffset() * 60000;
+                return new Date(dateObj.getTime() - offsetMs).toISOString().slice(0, 16);
+            }
+        };
+
+        window.getAbsoluteDateFromDestIso = function(destIso, tz) {
+            let guessDate = new Date(destIso); 
+            try {
+                for(let i=0; i<3; i++) {
+                    let currentDestIso = window.getDestIsoString(guessDate, tz);
+                    let diffMs = new Date(destIso).getTime() - new Date(currentDestIso).getTime();
+                    if(diffMs === 0) break;
+                    guessDate = new Date(guessDate.getTime() + diffMs);
+                }
+            } catch(e) {}
+            return guessDate;
+        };
         const urlParams = new URLSearchParams(window.location.search);
+
+        const customLat = urlParams.get('lat');
+        const customLng = urlParams.get('lng');
+        const customTargets = urlParams.get('targets');
+
+        if (customLat && customLng && customTargets) {
+            let parsedTargets = [];
+            let azCounter = 1;
+            customTargets.split(',').forEach(t => {
+                t = t.trim();
+                if (t.includes(':')) {
+                    let parts = t.split(':');
+                    let name = parts[0].trim();
+                    let az = parseFloat(parts[1].trim());
+                    if (!isNaN(az)) {
+                        parsedTargets.push({ name: name, azimuth: az });
+                    }
+                } else {
+                    let az = parseFloat(t);
+                    if (!isNaN(az)) {
+                        parsedTargets.push({ name: `Az${azCounter}`, azimuth: az });
+                        azCounter++;
+                    }
+                }
+            });
+
+            if (parsedTargets.length > 0 && !isNaN(parseFloat(customLat)) && !isNaN(parseFloat(customLng))) {
+                window.SOLAR_CONFIG.locations["custom"] = {
+                    name: "Custom Location",
+                    lat: parseFloat(customLat),
+                    lng: parseFloat(customLng),
+                    targets: parsedTargets
+                };
+            }
+        }
+
+        // Populate custom input fields from URL state if present
+        if (customLat) document.getElementById('custom_lat').value = customLat;
+        if (customLng) document.getElementById('custom_lng').value = customLng;
+        if (customTargets) document.getElementById('custom_targets').value = customTargets;
+
+        if (!window.SOLAR_CONFIG.locations["custom"]) {
+            window.SOLAR_CONFIG.locations["custom"] = { name: "Custom Location", lat: 0, lng: 0, targets: [] };
+        }
 
         // Hydrate Control Dropdown listings
         const selectElement = document.getElementById('location_select');
         Object.keys(window.SOLAR_CONFIG.locations).forEach(key => {
+            if (key === 'custom') return; // Skip so we can add it at the end
             let option = document.createElement('option');
             option.value = key;
             option.innerText = window.SOLAR_CONFIG.locations[key].name;
             selectElement.appendChild(option);
         });
+
+        let customOption = document.createElement('option');
+        customOption.value = "custom";
+        customOption.innerText = "-- Custom Location --";
+        selectElement.appendChild(customOption);
 
         // Evaluate Date Directives (Defaulting to Single Day: Today to Today)
         const todayStr = new Date().toISOString().split('T')[0];
@@ -114,10 +221,16 @@
         document.getElementById('end_date').value = urlParams.get('to') || urlParams.get('from') || todayStr;
 
         // Sync initial radar input picker time to local clock
-        syncRadarInputToClock(new Date());
+        syncRadarInputs(new Date());
 
         // Resolve Target Geographic Profiling ID
-        let targetLocId = urlParams.get('location') || window.SOLAR_CONFIG.defaultLocationId;
+        let targetLocId = urlParams.get('location');
+        if (customLat && customLng && customTargets && !targetLocId) {
+            targetLocId = "custom";
+        } else if (!targetLocId) {
+            targetLocId = window.SOLAR_CONFIG.defaultLocationId;
+        }
+
         if (!window.SOLAR_CONFIG.locations[targetLocId]) {
             targetLocId = window.SOLAR_CONFIG.defaultLocationId;
         }
@@ -130,27 +243,59 @@
         }
     }
 
-    function syncRadarInputToClock(dateObj) {
+    function syncRadarInputs(dateObj) {
+        window.currentRadarAbsoluteTime = dateObj;
+        const selectedId = document.getElementById('location_select').value;
+        const profile = window.SOLAR_CONFIG.locations[selectedId];
+        let tz = 'UTC';
+        try { if(typeof tzlookup === 'function') tz = tzlookup(profile.lat, profile.lng); } catch(e) {}
+
         const offsetMs = dateObj.getTimezoneOffset() * 60000;
         const localIso = new Date(dateObj.getTime() - offsetMs).toISOString().slice(0, 16);
-        document.getElementById('radar_time_input').value = localIso;
+        
+        document.getElementById('radar_local_time').value = localIso;
+        document.getElementById('radar_dest_time').value = window.getDestIsoString(dateObj, tz);
+    }
+
+    function handleTimeEdit(source) {
+        document.getElementById('radar_live_check').checked = false;
+        toggleRadarLiveMode();
+
+        const selectedId = document.getElementById('location_select').value;
+        const profile = window.SOLAR_CONFIG.locations[selectedId];
+        let tz = 'UTC';
+        try { if(typeof tzlookup === 'function') tz = tzlookup(profile.lat, profile.lng); } catch(e) {}
+
+        if (source === 'local') {
+            const localIso = document.getElementById('radar_local_time').value;
+            if(!localIso) return;
+            window.currentRadarAbsoluteTime = new Date(localIso);
+            document.getElementById('radar_dest_time').value = window.getDestIsoString(window.currentRadarAbsoluteTime, tz);
+        } else if (source === 'dest') {
+            const destIso = document.getElementById('radar_dest_time').value;
+            if(!destIso) return;
+            window.currentRadarAbsoluteTime = window.getAbsoluteDateFromDestIso(destIso, tz);
+            const offsetMs = window.currentRadarAbsoluteTime.getTimezoneOffset() * 60000;
+            document.getElementById('radar_local_time').value = new Date(window.currentRadarAbsoluteTime.getTime() - offsetMs).toISOString().slice(0, 16);
+        }
+        
+        updateLiveRadarPosition();
     }
 
     function toggleRadarLiveMode() {
         const isLive = document.getElementById('radar_live_check').checked;
-        const timeInput = document.getElementById('radar_time_input');
-        timeInput.disabled = isLive;
+        document.getElementById('radar_local_time').disabled = isLive;
+        document.getElementById('radar_dest_time').disabled = isLive;
         
         if (isLive) {
-            syncRadarInputToClock(new Date());
+            syncRadarInputs(new Date());
         }
         updateLiveRadarPosition();
     }
 
     function updateLiveRadarPositionLoop() {
-        // Only push clock updates to input tracking if live mode checkbox is flagged true
         if (document.getElementById('radar_live_check').checked) {
-            syncRadarInputToClock(new Date());
+            syncRadarInputs(new Date());
             updateLiveRadarPosition();
         }
     }
@@ -158,9 +303,69 @@
     function loadSelectedLocationProfile() {
         const selectedId = document.getElementById('location_select').value;
         const profile = window.SOLAR_CONFIG.locations[selectedId];
+        
+        // If a predefined profile is loaded, populate the custom input fields so they can be edited easily
+        if (selectedId !== 'custom') {
+            document.getElementById('custom_lat').value = profile.lat;
+            document.getElementById('custom_lng').value = profile.lng;
+            document.getElementById('custom_targets').value = profile.targets.map(t => `${t.name}:${t.azimuth}`).join(', ');
+        }
+
         localActiveTargets = profile.targets;
         
         document.getElementById('simple_location_title').innerText = `Location: ${profile.name}`;
+
+        calculateSolarTransits();
+        
+        if (!document.getElementById('radar_live_check').checked) {
+            handleTimeEdit('local'); // Re-evaluate destination time based on new coordinates
+        } else {
+            updateLiveRadarPosition();
+        }
+    }
+
+    function updateCustomProfile() {
+        const lat = parseFloat(document.getElementById('custom_lat').value);
+        const lng = parseFloat(document.getElementById('custom_lng').value);
+        const targetsStr = document.getElementById('custom_targets').value;
+
+        let parsedTargets = [];
+        let azCounter = 1;
+        if (targetsStr) {
+            targetsStr.split(',').forEach(t => {
+                t = t.trim();
+                if (t.includes(':')) {
+                    let parts = t.split(':');
+                    let name = parts[0].trim();
+                    let az = parseFloat(parts[1].trim());
+                    if (!isNaN(az)) {
+                        parsedTargets.push({ name: name, azimuth: az });
+                    }
+                } else {
+                    let az = parseFloat(t);
+                    if (!isNaN(az)) {
+                        parsedTargets.push({ name: `Az${azCounter}`, azimuth: az });
+                        azCounter++;
+                    }
+                }
+            });
+        }
+
+        window.SOLAR_CONFIG.locations["custom"] = {
+            name: "Custom Location",
+            lat: isNaN(lat) ? 0 : lat,
+            lng: isNaN(lng) ? 0 : lng,
+            targets: parsedTargets
+        };
+
+        // Switch the dropdown to custom if it's not already
+        const selectEl = document.getElementById('location_select');
+        if (selectEl.value !== 'custom') {
+            selectEl.value = 'custom';
+        }
+
+        localActiveTargets = window.SOLAR_CONFIG.locations["custom"].targets;
+        document.getElementById('simple_location_title').innerText = `Location: Custom Location`;
 
         calculateSolarTransits();
         updateLiveRadarPosition();
@@ -265,8 +470,9 @@
         let targetEvalTime;
         if (document.getElementById('radar_live_check').checked) {
             targetEvalTime = new Date();
+            syncRadarInputs(targetEvalTime);
         } else {
-            targetEvalTime = new Date(document.getElementById('radar_time_input').value);
+            targetEvalTime = window.currentRadarAbsoluteTime || new Date();
         }
 
         const currentPos = getCompassSolarPosition(targetEvalTime, profile.lat, profile.lng);

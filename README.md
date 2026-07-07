@@ -14,8 +14,9 @@ Originally built to calculate solar geometry, this tool has been completely gene
   * **full:** Interactive desktop dashboard featuring controls, full calendar tables, and a real-time horizon orientation radar.
   * **simple:** Stripped-down embed optimized for inline wiki blocks, rendering only the location name and a clean data table with clear headers.
   * **table:** Extreme minimalist mode showing *only* the calculated times. Automatically hides the date index column if the timeframe is locked to a single day.
-* **Interactive Live/Manual Radar:** Features a 3D-projected compass radar showing the sun's position relative to your defined azimuth markers. Includes a "Time Machine" toggle to simulate the sun's trajectory for any date and time.
+* **Interactive Live/Manual Radar:** Features a 3D-projected compass radar showing the sun's position relative to your defined azimuth markers. Includes dual "Local Time" and "Destination Time" inputs that automatically calculate timezone offsets, alongside a "Live Tracking" toggle.
 * **Seamless Host Styling:** Embed views feature transparent backgrounds and an agnostic system font stack, allowing the parent website's natural layout and design palette to bleed through automatically.
+* **Data Export:** Generate and download a complete `.csv` dataset of all calculated solar transit times directly from the dashboard.
 * **Offline & Intranet Friendly:** Uses a decoupled architecture (`config.js`) that safely bypasses browser security (CORS) blocks, making it safe to run in heavily secured enterprise networks or even completely offline.
 
 ---
@@ -25,6 +26,7 @@ Originally built to calculate solar geometry, this tool has been completely gene
 * **index.html** — Main Application Engine & JavaScript Logic
 * **style.css** — Core Layout & Component Styling Sheets
 * **config.js** — Global Locations & Target Azimuth Configuration
+* **libs/** — Locally bundled third-party libraries (`suncalc.min.js` and `tz.js`)
 
 ---
 
@@ -68,6 +70,9 @@ Customize individual instances of the application on the fly using standard brow
 | :--- | :--- | :--- | :--- |
 | style | full, simple, table | Toggles dashboard elements, titles, and table layout structures. | full |
 | location | string (Profile ID) | Loads the specific coordinate and target configuration profile from config.js. | Config default |
+| lat | float | Custom latitude. Automatically builds a "Custom" profile on the fly if used with lng and targets. | None |
+| lng | float | Custom longitude. | None |
+| targets | string (CSV of angles) | Comma-separated list of target azimuths. Supports `Name:Angle` format (e.g., `Azim1:139.0, 229.5`) for custom locations. | None |
 | from | YYYY-MM-DD | The start date boundary for the transit alignment table calculations. | Today |
 | to | YYYY-MM-DD | The end date boundary for the calculations. | Today (Single Day) |
 | theme | dark | Converts embedded elements to light text and dark borders for dark-themed parent sites. | Light / Transparent |
@@ -77,6 +82,7 @@ Customize individual instances of the application on the fly using standard brow
 * Full Application Dashboard: https://yourdomain.com/sat/index.html?location=biozentrum
 * Confluence Block (Minimalist Grid for Today): https://yourdomain.com/sat/index.html?style=table&location=biozentrum
 * Multi-Day Dark Mode Summary Chart: https://yourdomain.com/sat/index.html?style=simple&location=greenwich&from=2026-06-01&to=2026-06-07&theme=dark
+* Dynamic Custom Location (No config.js edit required): https://yourdomain.com/sat/index.html?lat=47.5&lng=7.5&targets=139.5,229.0
 
 ---
 
@@ -95,4 +101,9 @@ Because the application logic runs entirely client-side inside the browser, it w
 
 ## 🛠️ Third-Party Dependencies
 
-This application uses the open-source SunCalc library via a CDN provider (cdnjs) to calculate the raw astronomical azimuth and elevation vectors. All subsequent crossing evaluations, interpolations, UI mechanics, and projection radars are built completely from scratch using vanilla, uncompiled JavaScript.
+* **SunCalc:** Used to calculate raw astronomical azimuth and elevation vectors.
+* **tz-lookup:** Used to map raw GPS coordinates to IANA Timezone strings natively within the browser.
+
+Both libraries have been bundled locally inside the `libs/` directory. This ensures the application is completely decoupled from the open internet and will function offline or behind strict corporate firewalls indefinitely.
+
+All subsequent crossing evaluations, interpolations, UI mechanics, and projection radars are built completely from scratch using vanilla, uncompiled JavaScript.
