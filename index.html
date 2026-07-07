@@ -422,6 +422,8 @@
 
         let csvRows = [csvHeader.join(',')];
         let loopD = new Date(startD);
+        let tz = 'UTC';
+        try { if(typeof tzlookup === 'function') tz = tzlookup(configProfile.lat, configProfile.lng); } catch(e) {}
 
         const stepInterval = window.SOLAR_CONFIG.precisionMinutes || 1;
 
@@ -429,8 +431,15 @@
             let curDateStr = loopD.toISOString().split('T')[0];
             let dayTimes = [], dayAzimuths = [], dayElevations = [];
             
-            let scan = new Date(loopD.getFullYear(), loopD.getMonth(), loopD.getDate(), 3, 0, 0);
-            let scanEnd = new Date(loopD.getFullYear(), loopD.getMonth(), loopD.getDate(), 22, 0, 0);
+            let scan, scanEnd;
+            if (typeof window.getAbsoluteDateFromDestIso === 'function' && tz !== 'UTC') {
+                scan = window.getAbsoluteDateFromDestIso(`${curDateStr}T00:00`, tz);
+                scanEnd = window.getAbsoluteDateFromDestIso(`${curDateStr}T23:59`, tz);
+            } else {
+                scan = new Date(`${curDateStr}T00:00:00`);
+                scanEnd = new Date(`${curDateStr}T23:59:59`);
+            }
+            
             while (scan <= scanEnd) {
                 let pos = getCompassSolarPosition(scan, configProfile.lat, configProfile.lng);
                 dayTimes.push(new Date(scan)); dayAzimuths.push(pos.azimuth); dayElevations.push(pos.elevation);
@@ -447,9 +456,23 @@
 
             configProfile.targets.forEach(tgt => {
                 let match = findIntersectionIntersection(tgt.azimuth, dayTimes, dayAzimuths, dayElevations);
-                let timeStr = match ? match.toTimeString().split(' ')[0] : "N/A";
-                rowHTML += `<td>${timeStr}</td>`;
-                csvRowData.push(timeStr);
+                let timeStr = "N/A";
+                if (match) {
+                    try {
+                        const parts = new Intl.DateTimeFormat('en-US', {
+                            timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+                        }).formatToParts(match);
+                        let p = {};
+                        parts.forEach(part => { p[part.type] = part.value; });
+                        if (p.hour === '24') p.hour = '00';
+                        timeStr = `${p.hour}:${p.minute}:${p.second}`;
+                    } catch(e) {
+                        console.error("Timezone formatting error:", e, "tz:", tz);
+                        timeStr = match.toTimeString().split(' ')[0];
+                    }
+                }
+                rowHTML += `<td><span class="pill">${timeStr}</span></td>`;
+                csvRowData.push(timeStr);;
             });
 
             csvRows.push(csvRowData.join(','));
