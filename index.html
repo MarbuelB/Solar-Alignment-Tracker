@@ -18,17 +18,24 @@
         let initialStyle = 'full';
         if (styleInput === 'simple') initialStyle = 'simple';
         else if (styleInput === 'table') initialStyle = 'table';
+        else if (styleInput === 'radar') initialStyle = 'radar';
         
         document.body.className = `style-${initialStyle}`;
         window.currentAppStyle = initialStyle;
 
-        // Apply theme color parameter states right away before paint cycles
-        if (urlParams.get('theme') === 'dark') {
-            document.body.classList.add('theme-dark');
-        }
+        // Apply styling parameters
         const customColor = urlParams.get('color');
         if (customColor) {
-            document.documentElement.style.setProperty('--text-color', '#' + customColor.replace('#', ''));
+            document.body.style.setProperty('--text-color', '#' + customColor.replace('#', ''));
+        }
+        
+        const bgColor = urlParams.get('bgcolor');
+        if (bgColor === 'transparent') {
+            document.body.style.setProperty('--bg-color', 'transparent');
+            document.body.style.setProperty('--card-bg', 'transparent');
+        } else if (bgColor) {
+            document.body.style.setProperty('--bg-color', '#' + bgColor.replace('#', ''));
+            document.body.style.setProperty('--card-bg', '#' + bgColor.replace('#', ''));
         }
     })();
 </script>
@@ -71,6 +78,7 @@
     <div class="full-ui-element actions">
         <button class="btn-primary" onclick="calculateSolarTransits()">Refresh Data</button>
         <button class="btn-secondary" onclick="exportCSV()">Export Data</button>
+        <button class="btn-secondary" onclick="openUrlModal()">Create URL</button>
     </div>
 
     <div class="dashboard-layout">
@@ -82,7 +90,6 @@
         </div>
 
         <div class="compass-card">
-            <h3 style="margin:0 0 10px 0; font-size: 1rem;">Real-time Horizon Alignment</h3>
             
             <div class="radar-controls">
                 <label class="radar-live-label" style="align-self: flex-start; margin-bottom: 5px;">
@@ -101,14 +108,14 @@
                 </div>
             </div>
 
-            <svg class="compass-svg" id="compass_radar" viewBox="0 0 200 200">
-                <circle cx="100" cy="100" r="60" fill="none" stroke="#cbd5e0" stroke-width="2"/>
-                <line x1="40" y1="100" x2="160" y2="100" stroke="#e2e8f0" />
-                <line x1="100" y1="40" x2="100" y2="160" stroke="#e2e8f0" />
+            <svg class="compass-svg" id="compass_radar" viewBox="0 0 200 200" style="overflow: visible;">
+                <circle cx="100" cy="100" r="80" fill="none" stroke="var(--border-color)" stroke-width="2"/>
+                <line x1="20" y1="100" x2="180" y2="100" stroke="var(--border-color)" opacity="0.5"/>
+                <line x1="100" y1="20" x2="100" y2="180" stroke="var(--border-color)" opacity="0.5"/>
                 <g id="radar_targets"></g>
                 <g id="radar_sun_node"></g>
             </svg>
-            <div id="live_metrics" style="font-size: 0.8rem; margin-top: 10px; color:#4a5568; text-align:center; line-height: 1.4;"></div>
+            <div id="live_metrics" style="font-size: 0.8rem; margin-top: 10px; color: var(--text-color); text-align:center; line-height: 1.4;"></div>
         </div>
     </div>
 </div>
@@ -220,9 +227,6 @@
         document.getElementById('start_date').value = urlParams.get('from') || todayStr;
         document.getElementById('end_date').value = urlParams.get('to') || urlParams.get('from') || todayStr;
 
-        // Sync initial radar input picker time to local clock
-        syncRadarInputs(new Date());
-
         // Resolve Target Geographic Profiling ID
         let targetLocId = urlParams.get('location');
         if (customLat && customLng && customTargets && !targetLocId) {
@@ -235,6 +239,25 @@
             targetLocId = window.SOLAR_CONFIG.defaultLocationId;
         }
         selectElement.value = targetLocId;
+
+        // Initialize Time
+        const freezeDatetime = urlParams.get('datetime');
+        if (freezeDatetime) {
+            let tz = 'UTC';
+            const profile = window.SOLAR_CONFIG.locations[targetLocId];
+            try { if(typeof tzlookup === 'function') tz = tzlookup(profile.lat, profile.lng); } catch(e) {}
+            
+            let parsedDate = window.getAbsoluteDateFromDestIso(freezeDatetime, tz);
+            if (!isNaN(parsedDate.getTime())) {
+                document.getElementById('radar_live_check').checked = false;
+                window.currentRadarAbsoluteTime = parsedDate;
+                syncRadarInputs(parsedDate);
+            } else {
+                syncRadarInputs(new Date());
+            }
+        } else {
+            syncRadarInputs(new Date());
+        }
 
         loadSelectedLocationProfile();
 
@@ -252,9 +275,10 @@
 
         const offsetMs = dateObj.getTimezoneOffset() * 60000;
         const localIso = new Date(dateObj.getTime() - offsetMs).toISOString().slice(0, 16);
+        const destIso = window.getDestIsoString(dateObj, tz);
         
         document.getElementById('radar_local_time').value = localIso;
-        document.getElementById('radar_dest_time').value = window.getDestIsoString(dateObj, tz);
+        document.getElementById('radar_dest_time').value = destIso;
     }
 
     function handleTimeEdit(source) {
@@ -393,6 +417,28 @@
         }
         return null;
     }
+    
+    function getSolarDayProfile(dateObj, lat, lng, tz) {
+        let curDateStr = window.getDestIsoString ? window.getDestIsoString(dateObj, tz).split('T')[0] : dateObj.toISOString().split('T')[0];
+        
+        let scan, scanEnd;
+        if (typeof window.getAbsoluteDateFromDestIso === 'function' && tz !== 'UTC') {
+            scan = window.getAbsoluteDateFromDestIso(`${curDateStr}T00:00`, tz);
+            scanEnd = window.getAbsoluteDateFromDestIso(`${curDateStr}T23:59`, tz);
+        } else {
+            scan = new Date(`${curDateStr}T00:00:00`);
+            scanEnd = new Date(`${curDateStr}T23:59:59`);
+        }
+        
+        let dayTimes = [], dayAzimuths = [], dayElevations = [];
+        const stepInterval = window.SOLAR_CONFIG.precisionMinutes || 1;
+        while (scan <= scanEnd) {
+            let pos = getCompassSolarPosition(scan, lat, lng);
+            dayTimes.push(new Date(scan)); dayAzimuths.push(pos.azimuth); dayElevations.push(pos.elevation);
+            scan.setMinutes(scan.getMinutes() + stepInterval); 
+        }
+        return { dayTimes, dayAzimuths, dayElevations };
+    }
 
     function calculateSolarTransits() {
         const selectedId = document.getElementById('location_select').value;
@@ -428,23 +474,8 @@
         const stepInterval = window.SOLAR_CONFIG.precisionMinutes || 1;
 
         while (loopD <= endD) {
-            let curDateStr = loopD.toISOString().split('T')[0];
-            let dayTimes = [], dayAzimuths = [], dayElevations = [];
-            
-            let scan, scanEnd;
-            if (typeof window.getAbsoluteDateFromDestIso === 'function' && tz !== 'UTC') {
-                scan = window.getAbsoluteDateFromDestIso(`${curDateStr}T00:00`, tz);
-                scanEnd = window.getAbsoluteDateFromDestIso(`${curDateStr}T23:59`, tz);
-            } else {
-                scan = new Date(`${curDateStr}T00:00:00`);
-                scanEnd = new Date(`${curDateStr}T23:59:59`);
-            }
-            
-            while (scan <= scanEnd) {
-                let pos = getCompassSolarPosition(scan, configProfile.lat, configProfile.lng);
-                dayTimes.push(new Date(scan)); dayAzimuths.push(pos.azimuth); dayElevations.push(pos.elevation);
-                scan.setMinutes(scan.getMinutes() + stepInterval); 
-            }
+            let curDateStr = window.getDestIsoString ? window.getDestIsoString(loopD, tz).split('T')[0] : loopD.toISOString().split('T')[0];
+            let { dayTimes, dayAzimuths, dayElevations } = getSolarDayProfile(loopD, configProfile.lat, configProfile.lng, tz);
 
             let rowHTML = '';
             let csvRowData = [];
@@ -505,30 +536,52 @@
             return { x: 100 + radius * Math.cos(rad), y: 100 + radius * Math.sin(rad) };
         };
 
+        let tz = 'UTC';
+        try { if(typeof tzlookup === 'function') tz = tzlookup(profile.lat, profile.lng); } catch(e) {}
+        
+        let { dayTimes, dayAzimuths, dayElevations } = getSolarDayProfile(targetEvalTime, profile.lat, profile.lng, tz);
+
         let targetGroup = document.getElementById('radar_targets');
         
         // Clean inner layout loops - gray scale text label layers have been permanently wiped
         targetGroup.innerHTML = `
-            <circle cx="100" cy="100" r="40" fill="none" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3,3"/>
-            <circle cx="100" cy="100" r="20" fill="none" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3,3"/>
+            <circle cx="100" cy="100" r="53" fill="none" stroke="var(--border-color)" stroke-width="1" stroke-dasharray="3,3" opacity="0.6"/>
+            <circle cx="100" cy="100" r="27" fill="none" stroke="var(--border-color)" stroke-width="1" stroke-dasharray="3,3" opacity="0.6"/>
         `;
 
         // Render vector intersections along with structural split multiline tspan configurations
         profile.targets.forEach(tgt => {
-            let pt = getCoordinates(tgt.azimuth, 60);       
-            let textPt = getCoordinates(tgt.azimuth, 74);   
+            let pt = getCoordinates(tgt.azimuth, 80);       
+            let textPt = getCoordinates(tgt.azimuth, 95);   
             
+            let match = findIntersectionIntersection(tgt.azimuth, dayTimes, dayAzimuths, dayElevations);
+            let timeStr = "--:--:--";
+            if (match) {
+                try {
+                    const parts = new Intl.DateTimeFormat('en-US', {
+                        timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+                    }).formatToParts(match);
+                    let p = {};
+                    parts.forEach(part => { p[part.type] = part.value; });
+                    if (p.hour === '24') p.hour = '00';
+                    timeStr = `${p.hour}:${p.minute}:${p.second}`;
+                } catch(e) {
+                    timeStr = "N/A";
+                }
+            }
+
             targetGroup.innerHTML += `
-                <line x1="100" y1="100" x2="${pt.x}" y2="${pt.y}" stroke="#cbd5e0" stroke-width="1.5" stroke-dasharray="2,2"/>
-                <circle cx="${pt.x}" cy="${pt.y}" r="3.5" fill="#4a5568"/>
+                <line x1="100" y1="100" x2="${pt.x}" y2="${pt.y}" stroke="var(--text-color)" stroke-width="1.5" stroke-dasharray="2,2" opacity="0.3"/>
+                <circle cx="${pt.x}" cy="${pt.y}" r="3.5" fill="var(--text-color)"/>
                 <text x="${textPt.x}" y="${textPt.y}" 
-                      font-size="6.5" 
+                      font-size="6" 
                       font-weight="600"
-                      fill="#4a5568" 
+                      fill="var(--text-color)" 
                       text-anchor="middle"
                       transform="rotate(90, ${textPt.x}, ${textPt.y})">
-                    <tspan x="${textPt.x}" dy="-2">${tgt.name}</tspan>
-                    <tspan x="${textPt.x}" dy="9">(${tgt.azimuth}°)</tspan>
+                    <tspan x="${textPt.x}" dy="-6">${tgt.name}</tspan>
+                    <tspan x="${textPt.x}" dy="7.5">(${tgt.azimuth}°)</tspan>
+                    <tspan x="${textPt.x}" dy="7.5">${timeStr}</tspan>
                 </text>
             `;
         });
@@ -537,17 +590,17 @@
         let metricsDiv = document.getElementById('live_metrics');
         
         if (currentPos.elevation > 0) {
-            let sunR = 60 * (1 - (currentPos.elevation / 90));
+            let sunR = 80 * (1 - (currentPos.elevation / 90));
             let sunPt = getCoordinates(currentPos.azimuth, sunR);
             
             sunGroup.innerHTML = `
                 <line x1="100" y1="100" x2="${sunPt.x}" y2="${sunPt.y}" stroke="#ecc94b" stroke-width="1.5"/>
                 <circle cx="${sunPt.x}" cy="${sunPt.y}" r="6" fill="#ecc94b" stroke="#d69e2e" stroke-width="1"/>
             `;
-            metricsDiv.innerHTML = `<strong>Sun Calculated Tracking</strong><br>Azimuth: ${currentPos.azimuth.toFixed(4)}°<br>Elevation: ${currentPos.elevation.toFixed(2)}°`;
+            metricsDiv.innerHTML = `Sun Azimuth: ${currentPos.azimuth.toFixed(4)}°<br>Sun Elevation: ${currentPos.elevation.toFixed(2)}°`;
         } else {
             sunGroup.innerHTML = '';
-            metricsDiv.innerHTML = `<strong>Sun Below Horizon</strong><br>Azimuth: ${currentPos.azimuth.toFixed(4)}°<br>Elevation: ${currentPos.elevation.toFixed(2)}° (Night)`;
+            metricsDiv.innerHTML = `Sun Azimuth: ${currentPos.azimuth.toFixed(4)}°<br>Sun Elevation: ${currentPos.elevation.toFixed(2)}° (Night)`;
         }
     }
 
@@ -558,6 +611,168 @@
         link.href = URL.createObjectURL(blob);
         link.setAttribute("download", "solar_transit_alignment_dataset.csv");
         document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    }
+</script>
+<!-- URL Generator Modal -->
+<div id="url_modal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Create Embed URL</h2>
+            <button class="close-btn" onclick="closeUrlModal()">&times;</button>
+        </div>
+        <div class="grid" style="grid-template-columns: 1fr 1fr;">
+            <div class="form-group">
+                <label>Style</label>
+                <select id="modal_style" onchange="generateEmbedUrl()">
+                    <option value="full">Full Dashboard</option>
+                    <option value="simple">Simple Table</option>
+                    <option value="table">Minimal Table Only</option>
+                    <option value="radar">Radar Graphic Only</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Date & Time</label>
+                <select id="modal_date" onchange="generateEmbedUrl()">
+                    <option value="actual">Actual (Current Time)</option>
+                    <option value="fixed">Fixed Range (Table)</option>
+                    <option value="freeze">Freeze Time (Radar)</option>
+                </select>
+                <input type="datetime-local" id="modal_freeze_time" style="display:none; margin-top:5px; width:90%; font-size: 0.8rem;" onchange="generateEmbedUrl()">
+            </div>
+            <div class="form-group">
+                <label>Text Color</label>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <input type="color" id="modal_color" value="#333333" oninput="document.getElementById('modal_color_hex').textContent = this.value" onchange="generateEmbedUrl()">
+                    <span id="modal_color_hex" style="font-family: monospace; font-size: 0.85rem;">#333333</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Background Color</label>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <input type="color" id="modal_bgcolor" value="#f4f6f9" oninput="document.getElementById('modal_bgcolor_hex').textContent = this.value" onchange="generateEmbedUrl()">
+                    <span id="modal_bgcolor_hex" style="font-family: monospace; font-size: 0.85rem;">#f4f6f9</span>
+                    <label style="margin:0; margin-left: auto;"><input type="checkbox" id="modal_bg_transparent" onchange="generateEmbedUrl()"> Transparent</label>
+                </div>
+            </div>
+        </div>
+        <div class="url-output-container">
+            <textarea id="modal_url_output" readonly rows="4" style="resize: none; flex-grow: 1; padding: 10px; font-family: monospace; border: 1px solid #cbd5e0; border-radius: 6px;"></textarea>
+            <button class="btn-primary" onclick="copyEmbedUrl()">Copy</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    function rgbToHex(rgb) {
+        if (rgb.startsWith('transparent')) return 'transparent';
+        let sep = rgb.indexOf(",") > -1 ? "," : " ";
+        rgb = rgb.substr(4).split(")")[0].split(sep);
+        let r = (+rgb[0]).toString(16), g = (+rgb[1]).toString(16), b = (+rgb[2]).toString(16);
+        if (r.length == 1) r = "0" + r;
+        if (g.length == 1) g = "0" + g;
+        if (b.length == 1) b = "0" + b;
+        return "#" + r + g + b;
+    }
+
+    function openUrlModal() {
+        // Initialize color pickers with current state
+        const compStyles = window.getComputedStyle(document.body);
+        const curTextColor = compStyles.getPropertyValue('--text-color').trim();
+        const curBgColor = compStyles.getPropertyValue('--bg-color').trim();
+
+        if (curTextColor && curTextColor.startsWith('#')) {
+            document.getElementById('modal_color').value = curTextColor;
+            document.getElementById('modal_color_hex').textContent = curTextColor;
+        }
+        if (curBgColor) {
+            if (curBgColor === 'transparent') {
+                document.getElementById('modal_bg_transparent').checked = true;
+            } else if (curBgColor.startsWith('#')) {
+                document.getElementById('modal_bgcolor').value = curBgColor;
+                document.getElementById('modal_bgcolor_hex').textContent = curBgColor;
+                document.getElementById('modal_bg_transparent').checked = false;
+            } else if (curBgColor.startsWith('rgb')) {
+                const hex = rgbToHex(curBgColor);
+                if (hex !== 'transparent' && hex !== '#NaNNaNNaN') {
+                    document.getElementById('modal_bgcolor').value = hex;
+                    document.getElementById('modal_bgcolor_hex').textContent = hex;
+                    document.getElementById('modal_bg_transparent').checked = false;
+                }
+            }
+        }
+
+        document.getElementById('url_modal').classList.add('active');
+        generateEmbedUrl();
+    }
+
+    function closeUrlModal() {
+        document.getElementById('url_modal').classList.remove('active');
+    }
+
+    function generateEmbedUrl() {
+        // Determine base URL (fallback to github.io if local)
+        let baseUrl = "https://marbuelb.github.io/Solar-Alignment-Tracker/";
+        if (window.location.protocol !== "file:" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+            // Include index.html if it's currently in the path, otherwise just use origin+pathname
+            baseUrl = window.location.origin + window.location.pathname;
+        }
+
+        const params = new URLSearchParams();
+
+        // Style
+        const style = document.getElementById('modal_style').value;
+        if (style !== 'full') params.set('style', style);
+
+        // Location
+        const selectedId = document.getElementById('location_select').value;
+        if (selectedId === 'custom') {
+            params.set('lat', document.getElementById('custom_lat').value);
+            params.set('lng', document.getElementById('custom_lng').value);
+            params.set('targets', document.getElementById('custom_targets').value);
+        } else {
+            params.set('location', selectedId);
+        }
+
+        // Date & Time
+        const dateMode = document.getElementById('modal_date').value;
+        const freezeInput = document.getElementById('modal_freeze_time');
+        if (dateMode === 'fixed') {
+            freezeInput.style.display = 'none';
+            params.set('from', document.getElementById('start_date').value);
+            params.set('to', document.getElementById('end_date').value);
+        } else if (dateMode === 'freeze') {
+            freezeInput.style.display = 'block';
+            if (freezeInput.value) {
+                params.set('datetime', freezeInput.value);
+            }
+        } else {
+            freezeInput.style.display = 'none';
+        }
+
+        // Colors
+        const color = document.getElementById('modal_color').value;
+        if (color !== '#333333' && color !== '#000000') {
+            params.set('color', color.replace('#', ''));
+        }
+
+        const isTransparent = document.getElementById('modal_bg_transparent').checked;
+        const bgColor = document.getElementById('modal_bgcolor').value;
+        
+        if (isTransparent) {
+            params.set('bgcolor', 'transparent');
+        } else if (bgColor !== '#f4f6f9' && bgColor !== '#ffffff') {
+            params.set('bgcolor', bgColor.replace('#', ''));
+        }
+
+        const finalUrl = baseUrl + (params.toString() ? '?' + params.toString() : '');
+        document.getElementById('modal_url_output').value = finalUrl;
+    }
+
+    function copyEmbedUrl() {
+        const output = document.getElementById('modal_url_output');
+        output.select();
+        document.execCommand('copy');
+        alert('URL Copied to clipboard!');
     }
 </script>
 </body>

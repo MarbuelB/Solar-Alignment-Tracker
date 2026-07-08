@@ -64,25 +64,31 @@ window.SOLAR_CONFIG = {
 
 ## 🔗 URL Query Parameters
 
-Customize individual instances of the application on the fly using standard browser query strings:
+Customize individual instances of the application on the fly using standard browser query strings.
 
-| Parameter | Options / Type | Description | Default |
+> [!TIP]
+> **Use the "Create URL" Generator!**
+> Instead of writing these out manually, you can click the **Create URL** button directly in the application dashboard. This will open a visual configuration panel allowing you to select your UI style, date range, theme, and brand color, then automatically generate and copy the correct embed URL for your currently selected location or custom coordinates.
+
+| Parameter | Expected Values | Description | Default |
 | :--- | :--- | :--- | :--- |
-| style | full, simple, table | Toggles dashboard elements, titles, and table layout structures. | full |
-| location | string (Profile ID) | Loads the specific coordinate and target configuration profile from config.js. | Config default |
+| style | `simple`, `table`, `radar` | Alters UI visibility for embedding. `simple` hides the header and actions. `table` strips all layout components except the data grid itself. `radar` shows only the compass graphic and its metrics. | `full` (All UI) |
+| location | string (id) | Automatically loads a pre-configured profile. | `basel` |
 | lat | float | Custom latitude. Automatically builds a "Custom" profile on the fly if used with lng and targets. | None |
 | lng | float | Custom longitude. | None |
 | targets | string (CSV of angles) | Comma-separated list of target azimuths. Supports `Name:Angle` format (e.g., `Azim1:139.0, 229.5`) for custom locations. | None |
+| datetime | YYYY-MM-DDTHH:MM | Freezes the visual radar graphic at this specific local date and time instead of using live tracking. | Live |
 | from | YYYY-MM-DD | The start date boundary for the transit alignment table calculations. | Today |
 | to | YYYY-MM-DD | The end date boundary for the calculations. | Today (Single Day) |
-| theme | dark | Converts embedded elements to light text and dark borders for dark-themed parent sites. | Light / Transparent |
+| bgcolor | HEX Code or "transparent" | Sets a custom background color, or explicitly forces the background to be transparent. | Inherited |
 | color | HEX Code (e.g., FF5733) | Explicitly forces all data text elements to match a custom hexadecimal brand color. | Inherited |
 
 ### Query Examples:
-* Full Application Dashboard: https://yourdomain.com/sat/index.html?location=biozentrum
-* Confluence Block (Minimalist Grid for Today): https://yourdomain.com/sat/index.html?style=table&location=biozentrum
-* Multi-Day Dark Mode Summary Chart: https://yourdomain.com/sat/index.html?style=simple&location=greenwich&from=2026-06-01&to=2026-06-07&theme=dark
-* Dynamic Custom Location (No config.js edit required): https://yourdomain.com/sat/index.html?lat=47.5&lng=7.5&targets=139.5,229.0
+* Full Application Dashboard: https://marbuelb.github.io/Solar-Alignment-Tracker/?location=biozentrum
+* Confluence Block (Minimalist Grid for Today): https://marbuelb.github.io/Solar-Alignment-Tracker/?style=table&location=biozentrum
+* Visual Radar Only (Frozen in Time): https://marbuelb.github.io/Solar-Alignment-Tracker/?style=radar&location=biozentrum&datetime=2026-07-08T18:45
+* Custom Multi-Day Dark-Styled Table: https://marbuelb.github.io/Solar-Alignment-Tracker/?style=simple&location=greenwich&from=2026-06-01&to=2026-06-07&color=f7fafc&bgcolor=1a202c
+* Dynamic Custom Location (with transparent background): https://marbuelb.github.io/Solar-Alignment-Tracker/?lat=47.5&lng=7.5&targets=139.5,229.0&bgcolor=transparent
 
 ---
 
