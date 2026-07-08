@@ -265,6 +265,11 @@ body.style-radar {
     padding: 0;
     --bg-color: transparent;
     --card-bg: transparent;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
 }
 body.style-radar .full-ui-element,
 body.style-radar .location-header,
@@ -278,3 +283,5 @@ body.style-radar .compass-card {
 body.style-radar .radar-controls {
     display: none !important;
 }
+
+html { background: transparent !important; }

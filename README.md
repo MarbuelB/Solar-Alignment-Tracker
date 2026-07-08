@@ -98,10 +98,10 @@ Because the application logic runs entirely client-side inside the browser, it w
 
 1. Deploy the directory (index.html, style.css, config.js) to any internal static web server or shared network folder that can serve basic web links.
 2. Open your target Confluence page in **Edit Mode**.
-3. Type /iframe to spawn the native **Confluence iFrame Macro**.
-4. In the macro configurations panel, paste your customized URL parameter path:
-   * Example: https://intranet.company.local/apps/sat/index.html?style=simple&location=biozentrum
-5. Set **Width** to 100%, adjust the **Height** to comfortably fit your chosen style view (e.g., 180px for simple lists, or 650px for the full dashboard), and hit publish.
+3. Use the **HTML Macro** (type `/html` or insert it from the macro menu).
+4. Inside the macro block, write a standard HTML iframe tag pointing to your generated URL.
+   * Example: `<iframe src="https://marbuelb.github.io/Solar-Alignment-Tracker/?style=simple&location=biozentrum" width="100%" height="200" frameborder="0"></iframe>`
+5. Adjust the **height** property to comfortably fit your chosen style view (e.g., `200` for simple lists, `350` for radar graphics, or `650` for the full dashboard), and hit publish.
 
 ---
 
