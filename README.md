@@ -25,11 +25,20 @@ Originally built to calculate solar geometry, this tool has been completely gene
 
 When viewing the solar transit tables or the live radar, you will see times formatted with a duration offset (e.g., `15:42:10 ± 01:10`). 
 
-Because the sun is not a single infinitesimal point, it takes time for the entire sun disk to cross a specific alignment heading. The apparent angular diameter of the sun from Earth is effectively a constant **0.533 degrees**.
+Because the sun is not a single infinitesimal point, it takes time for the entire sun disk to cross an alignment. The apparent angular diameter of the sun from Earth is effectively a constant **0.533 degrees**.
 
-The application calculates exactly when the dead-center of the sun crosses your heading (the primary timestamp). It then dynamically calculates the time difference for the leading edge to first touch the line (`Heading Azimuth - 0.2665°`). This exact time difference is appended as the symmetrical **± duration**, telling you exactly how many minutes and seconds it takes for the entire sun disk to pass through the alignment.
+To optimize performance and accuracy, the application uses three distinct calculation layers:
 
-*(Note: In the CSV data export, this is formatted as `15:42:10 (01:10)` to keep spreadsheet processing simple and clean).*
+**1. Horizontal Custom Headings (Complex Math, calculated once per day)**
+For your custom compass headings (e.g., aligning with a building), the application uses an intensive simulation to map the sun's trajectory across the sky minute-by-minute. It calculates exactly when the dead-center of the sun crosses your specific azimuth line (the primary timestamp). It then calculates the time difference for the leading edge of the sun to first touch that line (`Heading Azimuth ± 0.2665°`). This is appended as the symmetrical **± duration**, telling you exactly how many minutes and seconds it takes for the 0.533° sun disk to slide *horizontally* across your compass alignment.
+
+**2. Vertical Sunrise / Sunset (Simple Math, calculated once per day)**
+For Sunrise and Sunset, the application bypasses the horizontal simulation and asks the `SunCalc` library directly for the exact time the top edge of the sun touches the horizon (`-0.833°` elevation, accounting for atmospheric refraction) and when the bottom edge fully clears the horizon (`-0.3°` elevation). The primary timestamp shown on the radar is the true geometric center between those two points, and the **± duration** tells you the exact number of minutes the sun spends *vertically* rising over or sinking below the horizon line.
+
+**3. Real-Time Radar Position (Simple Math, updated every second)**
+The physical position of the yellow sun dot on the compass and the exact Azimuth/Elevation text readouts at the bottom of the widget are updated in real-time every second using a lightweight, direct `SunCalc` calculation for the exact current millisecond.
+
+*(Note: In the CSV data export, durations are formatted as `15:42:10 (01:10)` to keep spreadsheet processing simple and clean).*
 
 ---
 

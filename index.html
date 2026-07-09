@@ -106,7 +106,6 @@
                     </div>
                 </div>
             </div>
-
             <div id="radar_location_header" style="font-size: 0.8rem; margin-bottom: 10px; color: var(--text-color); text-align:center; line-height: 1.4;"></div>
             
             <svg class="compass-svg" id="compass_radar" viewBox="0 0 200 200" style="overflow: visible;">
@@ -428,7 +427,7 @@
     function findIntersectionIntersection(headingAz, dayTimes, dayAzimuths, dayElevations) {
         for (let i = 0; i < dayAzimuths.length - 1; i++) {
             let az1 = dayAzimuths[i], az2 = dayAzimuths[i+1];
-            if (dayElevations[i] <= 0 && dayElevations[i+1] <= 0) continue;
+            if (dayElevations[i] <= -2 && dayElevations[i+1] <= -2) continue;
 
             let diff = az2 - az1;
             if (diff < -180) diff += 360; if (diff > 180) diff -= 360;
@@ -442,6 +441,8 @@
         return null;
     }
     
+    let cachedRadarHeadings = { dateStr: null, locationId: null, data: [] };
+
     function getSolarDayProfile(dateObj, lat, lng, tz) {
         let curDateStr = window.getDestIsoString ? window.getDestIsoString(dateObj, tz).split('T')[0] : dateObj.toISOString().split('T')[0];
         
@@ -466,10 +467,42 @@
             scan.setMinutes(scan.getMinutes() + stepInterval); 
         }
         
+        let midDay = dayTimes[Math.floor(dayTimes.length / 2)]; // Get exact middle of the simulation day
+        let sunTimes = SunCalc.getTimes(midDay, lat, lng);
+        let sunriseStr = "--:--", sunsetStr = "--:--";
+        let srDurStr = "", ssDurStr = "";
+        let srCenter, ssCenter;
+        
+        try {
+            const formatTime = (d) => {
+                const parts = new Intl.DateTimeFormat('en-US', {
+                    timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+                }).formatToParts(d);
+                let p = {};
+                parts.forEach(part => { p[part.type] = part.value; });
+                if (p.hour === '24') p.hour = '00';
+                return `${p.hour}:${p.minute}:${p.second}`;
+            };
+            if (sunTimes.sunrise && sunTimes.sunriseEnd && !isNaN(sunTimes.sunrise) && !isNaN(sunTimes.sunriseEnd)) {
+                srCenter = new Date((sunTimes.sunrise.getTime() + sunTimes.sunriseEnd.getTime()) / 2);
+                sunriseStr = formatTime(srCenter);
+                let durMs = Math.abs(sunTimes.sunrise.getTime() - sunTimes.sunriseEnd.getTime()) / 2;
+                let durM = Math.floor(durMs / 60000); let durS = Math.floor((durMs % 60000) / 1000);
+                srDurStr = `± ${durM}:${durS.toString().padStart(2, '0')}`;
+            }
+            if (sunTimes.sunset && sunTimes.sunsetStart && !isNaN(sunTimes.sunset) && !isNaN(sunTimes.sunsetStart)) {
+                ssCenter = new Date((sunTimes.sunset.getTime() + sunTimes.sunsetStart.getTime()) / 2);
+                sunsetStr = formatTime(ssCenter);
+                let durMs = Math.abs(sunTimes.sunset.getTime() - sunTimes.sunsetStart.getTime()) / 2;
+                let durM = Math.floor(durMs / 60000); let durS = Math.floor((durMs % 60000) / 1000);
+                ssDurStr = `± ${durM}:${durS.toString().padStart(2, '0')}`;
+            }
+        } catch(e) {}
+        
         cachedDailyProfile.dateStr = curDateStr;
         cachedDailyProfile.lat = lat;
         cachedDailyProfile.lng = lng;
-        cachedDailyProfile.data = { dayTimes, dayAzimuths, dayElevations };
+        cachedDailyProfile.data = { dayTimes, dayAzimuths, dayElevations, sunriseStr, sunsetStr, srDurStr, ssDurStr, sunriseDate: srCenter, sunsetDate: ssCenter };
         
         return cachedDailyProfile.data;
     }
@@ -595,7 +628,7 @@
         let tz = 'UTC';
         try { if(typeof tzlookup === 'function') tz = tzlookup(profile.lat, profile.lng); } catch(e) {}
         
-        let { dayTimes, dayAzimuths, dayElevations } = getSolarDayProfile(headingEvalTime, profile.lat, profile.lng, tz);
+        let { dayTimes, dayAzimuths, dayElevations, sunriseStr, sunsetStr, srDurStr, ssDurStr, sunriseDate, sunsetDate } = getSolarDayProfile(headingEvalTime, profile.lat, profile.lng, tz);
 
         let headingGroup = document.getElementById('radar_headings');
         
@@ -604,24 +637,25 @@
             <circle cx="100" cy="100" r="53" fill="none" stroke="var(--border-color)" stroke-width="1" stroke-dasharray="3,3" opacity="0.6"/>
             <circle cx="100" cy="100" r="27" fill="none" stroke="var(--border-color)" stroke-width="1" stroke-dasharray="3,3" opacity="0.6"/>
         `;
-
-        // Render vector intersections along with structural split multiline tspan configurations
-        profile.headings.forEach(tgt => {
-            let pt = getCoordinates(tgt.azimuth, 72);       
-            let textPt = getCoordinates(tgt.azimuth, 88);   
-            
-            let match = findIntersectionIntersection(tgt.azimuth, dayTimes, dayAzimuths, dayElevations);
-            let timeStr = "--:--:--";
-            let durStr = "";
-            if (match) {
-                try {
-                    const parts = new Intl.DateTimeFormat('en-US', {
-                        timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-                    }).formatToParts(match);
-                    let p = {};
-                    parts.forEach(part => { p[part.type] = part.value; });
-                    if (p.hour === '24') p.hour = '00';
-                    timeStr = `${p.hour}:${p.minute}:${p.second}`;
+        
+        let renderHeadings = [];
+        let curDateStr = cachedDailyProfile.dateStr;
+        if (cachedRadarHeadings.dateStr !== curDateStr || cachedRadarHeadings.locationId !== selectedId) {
+            let compiledHeadings = [...profile.headings];
+            compiledHeadings.forEach(tgt => {
+                tgt.timeStr = "--:--:--";
+                tgt.durStr = "";
+                let match = findIntersectionIntersection(tgt.azimuth, dayTimes, dayAzimuths, dayElevations);
+                if (match) {
+                    try {
+                        const parts = new Intl.DateTimeFormat('en-US', {
+                            timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+                        }).formatToParts(match);
+                        let p = {};
+                        parts.forEach(part => { p[part.type] = part.value; });
+                        if (p.hour === '24') p.hour = '00';
+                        tgt.timeStr = `${p.hour}:${p.minute}:${p.second}`;
+                    } catch(e) { tgt.timeStr = "N/A"; }
                     
                     let matchOffset = findIntersectionIntersection(tgt.azimuth - 0.2665, dayTimes, dayAzimuths, dayElevations) || 
                                       findIntersectionIntersection(tgt.azimuth + 0.2665, dayTimes, dayAzimuths, dayElevations);
@@ -629,15 +663,42 @@
                         let durMs = Math.abs(match.getTime() - matchOffset.getTime());
                         let durM = Math.floor(durMs / 60000);
                         let durS = Math.floor((durMs % 60000) / 1000);
-                        durStr = `± ${durM}:${durS.toString().padStart(2, '0')}`;
+                        tgt.durStr = `± ${durM}:${durS.toString().padStart(2, '0')}`;
                     }
-                } catch(e) {
-                    timeStr = "N/A";
                 }
-            }
+            });
+            cachedRadarHeadings.dateStr = curDateStr;
+            cachedRadarHeadings.locationId = selectedId;
+            cachedRadarHeadings.data = compiledHeadings;
+        }
+        
+        renderHeadings = [...cachedRadarHeadings.data];
+        
+        if (sunriseDate && !isNaN(sunriseDate)) {
+            let srPos = getCompassSolarPosition(sunriseDate, profile.lat, profile.lng);
+            renderHeadings.push({ name: "Sunrise", azimuth: srPos.azimuth, isSunEvent: true, timeStr: sunriseStr, durStr: srDurStr });
+        }
+        if (sunsetDate && !isNaN(sunsetDate)) {
+            let ssPos = getCompassSolarPosition(sunsetDate, profile.lat, profile.lng);
+            renderHeadings.push({ name: "Sunset", azimuth: ssPos.azimuth, isSunEvent: true, timeStr: sunsetStr, durStr: ssDurStr });
+        }
+
+        // Render vector intersections along with structural split multiline tspan configurations
+        renderHeadings.forEach(tgt => {
+            let pt = getCoordinates(tgt.azimuth, 72);       
+            let textPt = getCoordinates(tgt.azimuth, 88);   
+            
+            let timeStr = tgt.timeStr || "--:--:--";
+            let durStr = tgt.durStr || "";
+            
+            let lineStyle = tgt.isSunEvent 
+                ? `stroke="var(--text-color)" stroke-width="1.5" opacity="0.6"` 
+                : `stroke="var(--text-color)" stroke-width="1.5" stroke-dasharray="2,2" opacity="0.3"`;
+            
+            let displayAzimuth = typeof tgt.azimuth === 'number' ? tgt.azimuth.toFixed(1) : tgt.azimuth;
 
             headingGroup.innerHTML += `
-                <line x1="100" y1="100" x2="${pt.x}" y2="${pt.y}" stroke="var(--text-color)" stroke-width="1.5" stroke-dasharray="2,2" opacity="0.3"/>
+                <line x1="100" y1="100" x2="${pt.x}" y2="${pt.y}" ${lineStyle}/>
                 <circle cx="${pt.x}" cy="${pt.y}" r="3.5" fill="var(--text-color)"/>
                 <text x="${textPt.x}" y="${textPt.y}" 
                       font-size="6" 
@@ -646,7 +707,7 @@
                       text-anchor="middle"
                       transform="rotate(90, ${textPt.x}, ${textPt.y})">
                     <tspan x="${textPt.x}" dy="-9">${tgt.name}</tspan>
-                    <tspan x="${textPt.x}" dy="7.5">${tgt.azimuth}°</tspan>
+                    <tspan x="${textPt.x}" dy="7.5">${displayAzimuth}°</tspan>
                     <tspan x="${textPt.x}" dy="7.5">${timeStr}</tspan>
                     <tspan x="${textPt.x}" dy="7.5">${durStr}</tspan>
                 </text>
@@ -656,18 +717,18 @@
         let sunGroup = document.getElementById('radar_sun_node');
         let metricsDiv = document.getElementById('live_metrics');
         
-        if (currentPos.elevation > 0) {
-            let sunR = 80 * (1 - (currentPos.elevation / 90));
+        if (currentPos.elevation > -0.833) {
+            let sunR = 72 * (1 - (currentPos.elevation / 90));
             let sunPt = getCoordinates(currentPos.azimuth, sunR);
             
             sunGroup.innerHTML = `
                 <line x1="100" y1="100" x2="${sunPt.x}" y2="${sunPt.y}" stroke="#ecc94b" stroke-width="1.5"/>
                 <circle cx="${sunPt.x}" cy="${sunPt.y}" r="6" fill="#ecc94b" stroke="#d69e2e" stroke-width="1"/>
             `;
-            metricsDiv.innerHTML = `Sun Azimuth: ${currentPos.azimuth.toFixed(4)}°<br>Sun Elevation: ${currentPos.elevation.toFixed(2)}°`;
+            metricsDiv.innerHTML = `Sun Azimuth: ${currentPos.azimuth.toFixed(3)}°<br>Sun Elevation: ${currentPos.elevation.toFixed(2)}°`;
         } else {
             sunGroup.innerHTML = '';
-            metricsDiv.innerHTML = `Sun Azimuth: ${currentPos.azimuth.toFixed(4)}°<br>Sun Elevation: ${currentPos.elevation.toFixed(2)}° (Night)`;
+            metricsDiv.innerHTML = `Sun Azimuth: ${currentPos.azimuth.toFixed(3)}°<br>Sun Elevation: ${currentPos.elevation.toFixed(2)}° (Night)`;
         }
     }
 
