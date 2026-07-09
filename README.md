@@ -78,6 +78,7 @@ Customize individual instances of the application on the fly using standard brow
 | lng | float | Custom longitude. | None |
 | targets | string (CSV of angles) | Comma-separated list of target azimuths. Supports `Name:Angle` format (e.g., `Azim1:139.0, 229.5`) for custom locations. | None |
 | datetime | YYYY-MM-DDTHH:MM | Freezes the visual radar graphic at this specific local date and time instead of using live tracking. | Live |
+| update | int (seconds) | Overrides the refresh rate for the live tracking radar graphic (e.g., `update=1` for 1-second real-time tracking). | 30 |
 | from | YYYY-MM-DD | The start date boundary for the transit alignment table calculations. | Today |
 | to | YYYY-MM-DD | The end date boundary for the calculations. | Today (Single Day) |
 | bgcolor | HEX Code or "transparent" | Sets a custom background color, or explicitly forces the background to be transparent. | Inherited |

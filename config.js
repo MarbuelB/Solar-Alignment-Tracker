@@ -44,7 +44,7 @@ window.SOLAR_CONFIG = {
             ]
         },
         "bos": {
-            name: "Boston Airport, Boston",
+            name: "Logan International Airport, Boston",
             lat: 42.3598735,
             lng: -71.0038419,
             targets: [

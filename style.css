@@ -285,3 +285,5 @@ body.style-radar .radar-controls {
 }
 
 html { background: transparent !important; }
+
+.radar-time-inputs { display: flex; flex-direction: column; gap: 8px; width: 100%; }

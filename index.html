@@ -93,10 +93,9 @@
             
             <div class="radar-controls">
                 <label class="radar-live-label" style="align-self: flex-start; margin-bottom: 5px;">
-                    <input type="checkbox" id="radar_live_check" checked onchange="toggleRadarLiveMode()"> 
-                    Live Tracking (Now)
+                    <input type="checkbox" id="radar_live_check" checked onchange="toggleRadarLiveMode()"> Live Tracking (Now)
                 </label>
-                <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+                <div class="radar-time-inputs">
                     <div style="display: flex; align-items: center; justify-content: space-between;">
                         <label for="radar_local_time" style="font-size: 0.75rem; margin:0;">Local Time (You)</label>
                         <input type="datetime-local" id="radar_local_time" class="radar-time-input" style="width: 60%;" disabled onchange="handleTimeEdit('local')">
@@ -108,6 +107,8 @@
                 </div>
             </div>
 
+            <div id="radar_location_header" style="font-size: 0.8rem; margin-bottom: 10px; color: var(--text-color); text-align:center; line-height: 1.4;"></div>
+            
             <svg class="compass-svg" id="compass_radar" viewBox="0 0 200 200" style="overflow: visible;">
                 <circle cx="100" cy="100" r="80" fill="none" stroke="var(--border-color)" stroke-width="2"/>
                 <line x1="20" y1="100" x2="180" y2="100" stroke="var(--border-color)" opacity="0.5"/>
@@ -123,6 +124,13 @@
 <script>
     let activeCSVPayload = "";
     let localActiveTargets = [];
+    
+    let cachedDailyProfile = {
+        dateStr: null,
+        lat: null,
+        lng: null,
+        data: null
+    };
 
     window.addEventListener('DOMContentLoaded', () => {
         initializeApplicationState();
@@ -166,6 +174,7 @@
         const customLat = urlParams.get('lat');
         const customLng = urlParams.get('lng');
         const customTargets = urlParams.get('targets');
+        const customName = urlParams.get('name');
 
         if (customLat && customLng && customTargets) {
             let parsedTargets = [];
@@ -190,7 +199,7 @@
 
             if (parsedTargets.length > 0 && !isNaN(parseFloat(customLat)) && !isNaN(parseFloat(customLng))) {
                 window.SOLAR_CONFIG.locations["custom"] = {
-                    name: "Custom Location",
+                    name: customName || "Custom Location",
                     lat: parseFloat(customLat),
                     lng: parseFloat(customLng),
                     targets: parsedTargets
@@ -261,8 +270,17 @@
 
         loadSelectedLocationProfile();
 
-        if (window.currentAppStyle === 'full') {
-            setInterval(updateLiveRadarPositionLoop, 30000); 
+        let updateRateMs = 1000;
+        const updateParam = urlParams.get('update');
+        if (updateParam) {
+            let s = parseFloat(updateParam);
+            if (!isNaN(s) && s > 0) {
+                updateRateMs = s * 1000;
+            }
+        }
+
+        if (window.currentAppStyle === 'full' || window.currentAppStyle === 'radar') {
+            setInterval(updateLiveRadarPositionLoop, updateRateMs); 
         }
     }
 
@@ -338,6 +356,12 @@
         localActiveTargets = profile.targets;
         
         document.getElementById('simple_location_title').innerText = `Location: ${profile.name}`;
+        
+        // Update radar location header
+        document.getElementById('radar_location_header').innerHTML = `
+            <strong>${profile.name}</strong><br>
+            ${profile.lat.toFixed(4)}°, ${profile.lng.toFixed(4)}°
+        `;
 
         calculateSolarTransits();
         
@@ -421,6 +445,10 @@
     function getSolarDayProfile(dateObj, lat, lng, tz) {
         let curDateStr = window.getDestIsoString ? window.getDestIsoString(dateObj, tz).split('T')[0] : dateObj.toISOString().split('T')[0];
         
+        if (cachedDailyProfile.dateStr === curDateStr && cachedDailyProfile.lat === lat && cachedDailyProfile.lng === lng) {
+            return cachedDailyProfile.data;
+        }
+
         let scan, scanEnd;
         if (typeof window.getAbsoluteDateFromDestIso === 'function' && tz !== 'UTC') {
             scan = window.getAbsoluteDateFromDestIso(`${curDateStr}T00:00`, tz);
@@ -437,7 +465,13 @@
             dayTimes.push(new Date(scan)); dayAzimuths.push(pos.azimuth); dayElevations.push(pos.elevation);
             scan.setMinutes(scan.getMinutes() + stepInterval); 
         }
-        return { dayTimes, dayAzimuths, dayElevations };
+        
+        cachedDailyProfile.dateStr = curDateStr;
+        cachedDailyProfile.lat = lat;
+        cachedDailyProfile.lng = lng;
+        cachedDailyProfile.data = { dayTimes, dayAzimuths, dayElevations };
+        
+        return cachedDailyProfile.data;
     }
 
     function calculateSolarTransits() {
