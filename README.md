@@ -42,7 +42,7 @@ window.SOLAR_CONFIG = {
             name: "Biozentrum, Basel",
             lat: 47.564292,
             lng: 7.580731,
-            targets: [
+            headings: [
                 { name: "SE", azimuth: 139.046 },
                 { name: "SW", azimuth: 229.046 }
             ]
@@ -51,7 +51,7 @@ window.SOLAR_CONFIG = {
             name: "Royal Observatory, Greenwich",
             lat: 51.477928,
             lng: -0.001545,
-            targets: [
+            headings: [
                 { name: "East", azimuth: 90.000 },
 				{ name: "South", azimuth: 180.000 },
                 { name: "West", azimuth: 270.000 }
@@ -73,12 +73,13 @@ Customize individual instances of the application on the fly using standard brow
 | Parameter | Expected Values | Description | Default |
 | :--- | :--- | :--- | :--- |
 | style | `simple`, `table`, `radar` | Alters UI visibility for embedding. `simple` hides the header and actions. `table` strips all layout components except the data grid itself. `radar` shows only the compass graphic and its metrics. | `full` (All UI) |
-| location | string (id) | Automatically loads a pre-configured profile. | `basel` |
-| lat | float | Custom latitude. Automatically builds a "Custom" profile on the fly if used with lng and targets. | None |
+| location | string (id) | Automatically loads a pre-configured profile. | `biozentrum` |
+| name | string | Custom location name to display when using custom lat/lng coordinates. | `Custom Location` |
+| lat | float | Custom latitude. Automatically builds a "Custom" profile on the fly if used with lng and headings. | None |
 | lng | float | Custom longitude. | None |
-| targets | string (CSV of angles) | Comma-separated list of target azimuths. Supports `Name:Angle` format (e.g., `Azim1:139.0, 229.5`) for custom locations. | None |
+| headings | string (CSV of angles) | Comma-separated list of heading azimuths. Supports `Name:Angle` format (e.g., `Azim1:139.0, 229.5`) for custom locations. | None |
 | datetime | YYYY-MM-DDTHH:MM | Freezes the visual radar graphic at this specific local date and time instead of using live tracking. | Live |
-| update | int (seconds) | Overrides the refresh rate for the live tracking radar graphic (e.g., `update=1` for 1-second real-time tracking). | 30 |
+| update | int (seconds) | Overrides the refresh rate for the live tracking radar graphic. | 1 |
 | from | YYYY-MM-DD | The start date boundary for the transit alignment table calculations. | Today |
 | to | YYYY-MM-DD | The end date boundary for the calculations. | Today (Single Day) |
 | bgcolor | HEX Code or "transparent" | Sets a custom background color, or explicitly forces the background to be transparent. | Inherited |
@@ -89,7 +90,7 @@ Customize individual instances of the application on the fly using standard brow
 * Confluence Block (Minimalist Grid for Today): https://marbuelb.github.io/Solar-Alignment-Tracker/?style=table&location=biozentrum
 * Visual Radar Only (Frozen in Time): https://marbuelb.github.io/Solar-Alignment-Tracker/?style=radar&location=biozentrum&datetime=2026-07-08T18:45
 * Custom Multi-Day Dark-Styled Table: https://marbuelb.github.io/Solar-Alignment-Tracker/?style=simple&location=greenwich&from=2026-06-01&to=2026-06-07&color=f7fafc&bgcolor=1a202c
-* Dynamic Custom Location (with transparent background): https://marbuelb.github.io/Solar-Alignment-Tracker/?lat=47.5&lng=7.5&targets=139.5,229.0&bgcolor=transparent
+* Dynamic Custom Location (with transparent background): https://marbuelb.github.io/Solar-Alignment-Tracker/?lat=47.5&lng=7.5&headings=139.5,229.0&bgcolor=transparent
 
 ---
 
@@ -98,7 +99,7 @@ Customize individual instances of the application on the fly using standard brow
 Because the application logic runs entirely client-side inside the browser, it works beautifully around strict enterprise security constraints.
 
 1. Deploy the directory (index.html, style.css, config.js) to any internal static web server or shared network folder that can serve basic web links.
-2. Open your target Confluence page in **Edit Mode**.
+2. Open your heading Confluence page in **Edit Mode**.
 3. Use the **HTML Macro** (type `/html` or insert it from the macro menu).
 4. Inside the macro block, write a standard HTML iframe tag pointing to your generated URL.
    * Example: `<iframe src="https://marbuelb.github.io/Solar-Alignment-Tracker/?style=simple&location=biozentrum" width="100%" height="200" frameborder="0"></iframe>`

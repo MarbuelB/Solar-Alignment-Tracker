@@ -70,8 +70,8 @@
             <input type="number" id="custom_lng" step="any" placeholder="e.g. 7.58" onchange="updateCustomProfile()">
         </div>
         <div class="form-group">
-            <label for="custom_targets">Targets (Name:Azimuth, comma sep)</label>
-            <input type="text" id="custom_targets" placeholder="e.g. Az1:90, 180, 270" onchange="updateCustomProfile()">
+            <label for="custom_headings">Headings (Name:Azimuth, comma sep)</label>
+            <input type="text" id="custom_headings" placeholder="e.g. Az1:90, 180, 270" onchange="updateCustomProfile()">
         </div>
     </div>
 
@@ -113,7 +113,7 @@
                 <circle cx="100" cy="100" r="80" fill="none" stroke="var(--border-color)" stroke-width="2"/>
                 <line x1="20" y1="100" x2="180" y2="100" stroke="var(--border-color)" opacity="0.5"/>
                 <line x1="100" y1="20" x2="100" y2="180" stroke="var(--border-color)" opacity="0.5"/>
-                <g id="radar_targets"></g>
+                <g id="radar_headings"></g>
                 <g id="radar_sun_node"></g>
             </svg>
             <div id="live_metrics" style="font-size: 0.8rem; margin-top: 10px; color: var(--text-color); text-align:center; line-height: 1.4;"></div>
@@ -123,7 +123,7 @@
 
 <script>
     let activeCSVPayload = "";
-    let localActiveTargets = [];
+    let localActiveHeadings = [];
     
     let cachedDailyProfile = {
         dateStr: null,
@@ -173,36 +173,36 @@
 
         const customLat = urlParams.get('lat');
         const customLng = urlParams.get('lng');
-        const customTargets = urlParams.get('targets');
+        const customHeadings = urlParams.get('headings');
         const customName = urlParams.get('name');
 
-        if (customLat && customLng && customTargets) {
-            let parsedTargets = [];
+        if (customLat && customLng && customHeadings) {
+            let parsedHeadings = [];
             let azCounter = 1;
-            customTargets.split(',').forEach(t => {
+            customHeadings.split(',').forEach(t => {
                 t = t.trim();
                 if (t.includes(':')) {
                     let parts = t.split(':');
                     let name = parts[0].trim();
                     let az = parseFloat(parts[1].trim());
                     if (!isNaN(az)) {
-                        parsedTargets.push({ name: name, azimuth: az });
+                        parsedHeadings.push({ name: name, azimuth: az });
                     }
                 } else {
                     let az = parseFloat(t);
                     if (!isNaN(az)) {
-                        parsedTargets.push({ name: `Az${azCounter}`, azimuth: az });
+                        parsedHeadings.push({ name: `Az${azCounter}`, azimuth: az });
                         azCounter++;
                     }
                 }
             });
 
-            if (parsedTargets.length > 0 && !isNaN(parseFloat(customLat)) && !isNaN(parseFloat(customLng))) {
+            if (parsedHeadings.length > 0 && !isNaN(parseFloat(customLat)) && !isNaN(parseFloat(customLng))) {
                 window.SOLAR_CONFIG.locations["custom"] = {
                     name: customName || "Custom Location",
                     lat: parseFloat(customLat),
                     lng: parseFloat(customLng),
-                    targets: parsedTargets
+                    headings: parsedHeadings
                 };
             }
         }
@@ -210,10 +210,10 @@
         // Populate custom input fields from URL state if present
         if (customLat) document.getElementById('custom_lat').value = customLat;
         if (customLng) document.getElementById('custom_lng').value = customLng;
-        if (customTargets) document.getElementById('custom_targets').value = customTargets;
+        if (customHeadings) document.getElementById('custom_headings').value = customHeadings;
 
         if (!window.SOLAR_CONFIG.locations["custom"]) {
-            window.SOLAR_CONFIG.locations["custom"] = { name: "Custom Location", lat: 0, lng: 0, targets: [] };
+            window.SOLAR_CONFIG.locations["custom"] = { name: "Custom Location", lat: 0, lng: 0, headings: [] };
         }
 
         // Hydrate Control Dropdown listings
@@ -237,23 +237,23 @@
         document.getElementById('end_date').value = urlParams.get('to') || urlParams.get('from') || todayStr;
 
         // Resolve Target Geographic Profiling ID
-        let targetLocId = urlParams.get('location');
-        if (customLat && customLng && customTargets && !targetLocId) {
-            targetLocId = "custom";
-        } else if (!targetLocId) {
-            targetLocId = window.SOLAR_CONFIG.defaultLocationId;
+        let headingLocId = urlParams.get('location');
+        if (customLat && customLng && customHeadings && !headingLocId) {
+            headingLocId = "custom";
+        } else if (!headingLocId) {
+            headingLocId = window.SOLAR_CONFIG.defaultLocationId;
         }
 
-        if (!window.SOLAR_CONFIG.locations[targetLocId]) {
-            targetLocId = window.SOLAR_CONFIG.defaultLocationId;
+        if (!window.SOLAR_CONFIG.locations[headingLocId]) {
+            headingLocId = window.SOLAR_CONFIG.defaultLocationId;
         }
-        selectElement.value = targetLocId;
+        selectElement.value = headingLocId;
 
         // Initialize Time
         const freezeDatetime = urlParams.get('datetime');
         if (freezeDatetime) {
             let tz = 'UTC';
-            const profile = window.SOLAR_CONFIG.locations[targetLocId];
+            const profile = window.SOLAR_CONFIG.locations[headingLocId];
             try { if(typeof tzlookup === 'function') tz = tzlookup(profile.lat, profile.lng); } catch(e) {}
             
             let parsedDate = window.getAbsoluteDateFromDestIso(freezeDatetime, tz);
@@ -350,10 +350,10 @@
         if (selectedId !== 'custom') {
             document.getElementById('custom_lat').value = profile.lat;
             document.getElementById('custom_lng').value = profile.lng;
-            document.getElementById('custom_targets').value = profile.targets.map(t => `${t.name}:${t.azimuth}`).join(', ');
+            document.getElementById('custom_headings').value = profile.headings.map(t => `${t.name}:${t.azimuth}`).join(', ');
         }
 
-        localActiveTargets = profile.targets;
+        localActiveHeadings = profile.headings;
         
         document.getElementById('simple_location_title').innerText = `Location: ${profile.name}`;
         
@@ -375,24 +375,24 @@
     function updateCustomProfile() {
         const lat = parseFloat(document.getElementById('custom_lat').value);
         const lng = parseFloat(document.getElementById('custom_lng').value);
-        const targetsStr = document.getElementById('custom_targets').value;
+        const headingsStr = document.getElementById('custom_headings').value;
 
-        let parsedTargets = [];
+        let parsedHeadings = [];
         let azCounter = 1;
-        if (targetsStr) {
-            targetsStr.split(',').forEach(t => {
+        if (headingsStr) {
+            headingsStr.split(',').forEach(t => {
                 t = t.trim();
                 if (t.includes(':')) {
                     let parts = t.split(':');
                     let name = parts[0].trim();
                     let az = parseFloat(parts[1].trim());
                     if (!isNaN(az)) {
-                        parsedTargets.push({ name: name, azimuth: az });
+                        parsedHeadings.push({ name: name, azimuth: az });
                     }
                 } else {
                     let az = parseFloat(t);
                     if (!isNaN(az)) {
-                        parsedTargets.push({ name: `Az${azCounter}`, azimuth: az });
+                        parsedHeadings.push({ name: `Az${azCounter}`, azimuth: az });
                         azCounter++;
                     }
                 }
@@ -403,7 +403,7 @@
             name: "Custom Location",
             lat: isNaN(lat) ? 0 : lat,
             lng: isNaN(lng) ? 0 : lng,
-            targets: parsedTargets
+            headings: parsedHeadings
         };
 
         // Switch the dropdown to custom if it's not already
@@ -412,7 +412,7 @@
             selectEl.value = 'custom';
         }
 
-        localActiveTargets = window.SOLAR_CONFIG.locations["custom"].targets;
+        localActiveHeadings = window.SOLAR_CONFIG.locations["custom"].headings;
         document.getElementById('simple_location_title').innerText = `Location: Custom Location`;
 
         calculateSolarTransits();
@@ -425,18 +425,18 @@
         return { azimuth: compassAzimuth % 360, elevation: rawPos.altitude * 180 / Math.PI };
     }
 
-    function findIntersectionIntersection(targetAz, dayTimes, dayAzimuths, dayElevations) {
+    function findIntersectionIntersection(headingAz, dayTimes, dayAzimuths, dayElevations) {
         for (let i = 0; i < dayAzimuths.length - 1; i++) {
             let az1 = dayAzimuths[i], az2 = dayAzimuths[i+1];
             if (dayElevations[i] <= 0 && dayElevations[i+1] <= 0) continue;
 
             let diff = az2 - az1;
             if (diff < -180) diff += 360; if (diff > 180) diff -= 360;
-            let targetDiff = targetAz - az1;
-            if (targetDiff < -180) targetDiff += 360; if (targetDiff > 180) targetDiff -= 360;
+            let headingDiff = headingAz - az1;
+            if (headingDiff < -180) headingDiff += 360; if (headingDiff > 180) headingDiff -= 360;
 
-            if (Math.sign(targetDiff) === Math.sign(diff) && Math.abs(targetDiff) <= Math.abs(diff)) {
-                return new Date(dayTimes[i].getTime() + (targetDiff / diff) * (dayTimes[i+1].getTime() - dayTimes[i].getTime()));
+            if (Math.sign(headingDiff) === Math.sign(diff) && Math.abs(headingDiff) <= Math.abs(diff)) {
+                return new Date(dayTimes[i].getTime() + (headingDiff / diff) * (dayTimes[i+1].getTime() - dayTimes[i].getTime()));
             }
         }
         return null;
@@ -493,7 +493,7 @@
             csvHeader.push('Date');
         }
 
-        configProfile.targets.forEach(tgt => {
+        configProfile.headings.forEach(tgt => {
             headerHTML += `<th>${tgt.name} (${tgt.azimuth}°)</th>`;
             csvHeader.push(`${tgt.name}_${tgt.azimuth}`);
         });
@@ -519,7 +519,7 @@
                 csvRowData.push(curDateStr);
             }
 
-            configProfile.targets.forEach(tgt => {
+            configProfile.headings.forEach(tgt => {
                 let match = findIntersectionIntersection(tgt.azimuth, dayTimes, dayAzimuths, dayElevations);
                 let timeStr = "N/A";
                 if (match) {
@@ -555,15 +555,15 @@
         const profile = window.SOLAR_CONFIG.locations[selectedId];
         
         // Use checkbox conditional flag state to toggle between true local time or manual override pickers
-        let targetEvalTime;
+        let headingEvalTime;
         if (document.getElementById('radar_live_check').checked) {
-            targetEvalTime = new Date();
-            syncRadarInputs(targetEvalTime);
+            headingEvalTime = new Date();
+            syncRadarInputs(headingEvalTime);
         } else {
-            targetEvalTime = window.currentRadarAbsoluteTime || new Date();
+            headingEvalTime = window.currentRadarAbsoluteTime || new Date();
         }
 
-        const currentPos = getCompassSolarPosition(targetEvalTime, profile.lat, profile.lng);
+        const currentPos = getCompassSolarPosition(headingEvalTime, profile.lat, profile.lng);
 
         const getCoordinates = (azimuth, radius) => {
             let rad = (azimuth * Math.PI / 180);
@@ -573,18 +573,18 @@
         let tz = 'UTC';
         try { if(typeof tzlookup === 'function') tz = tzlookup(profile.lat, profile.lng); } catch(e) {}
         
-        let { dayTimes, dayAzimuths, dayElevations } = getSolarDayProfile(targetEvalTime, profile.lat, profile.lng, tz);
+        let { dayTimes, dayAzimuths, dayElevations } = getSolarDayProfile(headingEvalTime, profile.lat, profile.lng, tz);
 
-        let targetGroup = document.getElementById('radar_targets');
+        let headingGroup = document.getElementById('radar_headings');
         
         // Clean inner layout loops - gray scale text label layers have been permanently wiped
-        targetGroup.innerHTML = `
+        headingGroup.innerHTML = `
             <circle cx="100" cy="100" r="53" fill="none" stroke="var(--border-color)" stroke-width="1" stroke-dasharray="3,3" opacity="0.6"/>
             <circle cx="100" cy="100" r="27" fill="none" stroke="var(--border-color)" stroke-width="1" stroke-dasharray="3,3" opacity="0.6"/>
         `;
 
         // Render vector intersections along with structural split multiline tspan configurations
-        profile.targets.forEach(tgt => {
+        profile.headings.forEach(tgt => {
             let pt = getCoordinates(tgt.azimuth, 80);       
             let textPt = getCoordinates(tgt.azimuth, 95);   
             
@@ -604,7 +604,7 @@
                 }
             }
 
-            targetGroup.innerHTML += `
+            headingGroup.innerHTML += `
                 <line x1="100" y1="100" x2="${pt.x}" y2="${pt.y}" stroke="var(--text-color)" stroke-width="1.5" stroke-dasharray="2,2" opacity="0.3"/>
                 <circle cx="${pt.x}" cy="${pt.y}" r="3.5" fill="var(--text-color)"/>
                 <text x="${textPt.x}" y="${textPt.y}" 
@@ -762,7 +762,7 @@
         if (selectedId === 'custom') {
             params.set('lat', document.getElementById('custom_lat').value);
             params.set('lng', document.getElementById('custom_lng').value);
-            params.set('targets', document.getElementById('custom_targets').value);
+            params.set('headings', document.getElementById('custom_headings').value);
         } else {
             params.set('location', selectedId);
         }
