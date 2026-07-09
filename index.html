@@ -110,7 +110,7 @@
             <div id="radar_location_header" style="font-size: 0.8rem; margin-bottom: 10px; color: var(--text-color); text-align:center; line-height: 1.4;"></div>
             
             <svg class="compass-svg" id="compass_radar" viewBox="0 0 200 200" style="overflow: visible;">
-                <circle cx="100" cy="100" r="80" fill="none" stroke="var(--border-color)" stroke-width="2"/>
+                <circle cx="100" cy="100" r="72" fill="none" stroke="var(--border-color)" stroke-width="2"/>
                 <line x1="20" y1="100" x2="180" y2="100" stroke="var(--border-color)" opacity="0.5"/>
                 <line x1="100" y1="20" x2="100" y2="180" stroke="var(--border-color)" opacity="0.5"/>
                 <g id="radar_headings"></g>
@@ -531,13 +531,35 @@
                         parts.forEach(part => { p[part.type] = part.value; });
                         if (p.hour === '24') p.hour = '00';
                         timeStr = `${p.hour}:${p.minute}:${p.second}`;
+                        
+                        // Calculate +/- duration for 0.53 degree sun disk
+                        let matchOffset = findIntersectionIntersection(tgt.azimuth - 0.2665, dayTimes, dayAzimuths, dayElevations) || 
+                                          findIntersectionIntersection(tgt.azimuth + 0.2665, dayTimes, dayAzimuths, dayElevations);
+                        
+                        let durStrHtml = "";
+                        let durStrCsv = "";
+                        
+                        if (matchOffset) {
+                            let durMs = Math.abs(match.getTime() - matchOffset.getTime());
+                            let durM = Math.floor(durMs / 60000);
+                            let durS = Math.floor((durMs % 60000) / 1000);
+                            let durFormatted = `${durM}:${durS.toString().padStart(2, '0')}`;
+                            durStrHtml = ` ± ${durFormatted}`;
+                            durStrCsv = ` (${durFormatted})`;
+                        }
+                        
+                        rowHTML += `<td><span class="pill">${timeStr}${durStrHtml}</span></td>`;
+                        csvRowData.push(`${timeStr}${durStrCsv}`);
                     } catch(e) {
                         console.error("Timezone formatting error:", e, "tz:", tz);
                         timeStr = match.toTimeString().split(' ')[0];
+                        rowHTML += `<td><span class="pill">${timeStr}</span></td>`;
+                        csvRowData.push(timeStr);
                     }
+                } else {
+                    rowHTML += `<td><span class="pill">${timeStr}</span></td>`;
+                    csvRowData.push(timeStr);
                 }
-                rowHTML += `<td><span class="pill">${timeStr}</span></td>`;
-                csvRowData.push(timeStr);;
             });
 
             csvRows.push(csvRowData.join(','));
@@ -585,11 +607,12 @@
 
         // Render vector intersections along with structural split multiline tspan configurations
         profile.headings.forEach(tgt => {
-            let pt = getCoordinates(tgt.azimuth, 80);       
-            let textPt = getCoordinates(tgt.azimuth, 95);   
+            let pt = getCoordinates(tgt.azimuth, 72);       
+            let textPt = getCoordinates(tgt.azimuth, 88);   
             
             let match = findIntersectionIntersection(tgt.azimuth, dayTimes, dayAzimuths, dayElevations);
             let timeStr = "--:--:--";
+            let durStr = "";
             if (match) {
                 try {
                     const parts = new Intl.DateTimeFormat('en-US', {
@@ -599,6 +622,15 @@
                     parts.forEach(part => { p[part.type] = part.value; });
                     if (p.hour === '24') p.hour = '00';
                     timeStr = `${p.hour}:${p.minute}:${p.second}`;
+                    
+                    let matchOffset = findIntersectionIntersection(tgt.azimuth - 0.2665, dayTimes, dayAzimuths, dayElevations) || 
+                                      findIntersectionIntersection(tgt.azimuth + 0.2665, dayTimes, dayAzimuths, dayElevations);
+                    if (matchOffset) {
+                        let durMs = Math.abs(match.getTime() - matchOffset.getTime());
+                        let durM = Math.floor(durMs / 60000);
+                        let durS = Math.floor((durMs % 60000) / 1000);
+                        durStr = `± ${durM}:${durS.toString().padStart(2, '0')}`;
+                    }
                 } catch(e) {
                     timeStr = "N/A";
                 }
@@ -613,9 +645,10 @@
                       fill="var(--text-color)" 
                       text-anchor="middle"
                       transform="rotate(90, ${textPt.x}, ${textPt.y})">
-                    <tspan x="${textPt.x}" dy="-6">${tgt.name}</tspan>
-                    <tspan x="${textPt.x}" dy="7.5">(${tgt.azimuth}°)</tspan>
+                    <tspan x="${textPt.x}" dy="-9">${tgt.name}</tspan>
+                    <tspan x="${textPt.x}" dy="7.5">${tgt.azimuth}°</tspan>
                     <tspan x="${textPt.x}" dy="7.5">${timeStr}</tspan>
+                    <tspan x="${textPt.x}" dy="7.5">${durStr}</tspan>
                 </text>
             `;
         });

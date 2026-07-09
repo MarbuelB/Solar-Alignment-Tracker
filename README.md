@@ -21,6 +21,18 @@ Originally built to calculate solar geometry, this tool has been completely gene
 
 ---
 
+## ☀️ Understanding Transit Durations (± time)
+
+When viewing the solar transit tables or the live radar, you will see times formatted with a duration offset (e.g., `15:42:10 ± 01:10`). 
+
+Because the sun is not a single infinitesimal point, it takes time for the entire sun disk to cross a specific alignment heading. The apparent angular diameter of the sun from Earth is effectively a constant **0.533 degrees**.
+
+The application calculates exactly when the dead-center of the sun crosses your heading (the primary timestamp). It then dynamically calculates the time difference for the leading edge to first touch the line (`Heading Azimuth - 0.2665°`). This exact time difference is appended as the symmetrical **± duration**, telling you exactly how many minutes and seconds it takes for the entire sun disk to pass through the alignment.
+
+*(Note: In the CSV data export, this is formatted as `15:42:10 (01:10)` to keep spreadsheet processing simple and clean).*
+
+---
+
 ## 📂 File Structure
 
 * **index.html** — Main Application Engine & JavaScript Logic
