@@ -6,6 +6,7 @@
     <title>Solar Alignment Tracker</title>
     <script src="libs/suncalc.min.js"></script>
     <script src="libs/tz.js"></script>
+    <script src="libs/chart.min.js"></script>
     <script src="config.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -19,6 +20,7 @@
         if (styleInput === 'simple') initialStyle = 'simple';
         else if (styleInput === 'table') initialStyle = 'table';
         else if (styleInput === 'radar') initialStyle = 'radar';
+        else if (styleInput === 'graph') initialStyle = 'graph';
         
         document.body.className = `style-${initialStyle}`;
         window.currentAppStyle = initialStyle;
@@ -44,6 +46,7 @@
     <div class="full-ui-element" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
         <h1 style="margin: 0;">Solar Alignment Tracker</h1>
         <div class="actions" style="margin: 0;">
+            <button class="btn-primary" onclick="openGraphModal()">Plot Data</button>
             <button class="btn-secondary" onclick="exportCSV()">Export Data</button>
             <button class="btn-primary" style="background-color: #48bb78; border-color: #48bb78;" onclick="openUrlModal()">Create URL</button>
         </div>
@@ -133,6 +136,10 @@
 
     window.addEventListener('DOMContentLoaded', () => {
         initializeApplicationState();
+        if (window.currentAppStyle === 'graph') {
+            // Give the table a moment to finish its background calculateSolarTransits call from initializeApplicationState
+            setTimeout(() => openGraphModal(), 150);
+        }
     });
 
     function initializeApplicationState() {
@@ -527,6 +534,9 @@
             csvHeader.push('Date');
         }
 
+        headerHTML += '<th>Sunrise</th><th>Sunset</th>';
+        csvHeader.push('Sunrise', 'Sunset');
+
         configProfile.headings.forEach(tgt => {
             headerHTML += `<th>${tgt.name} (${tgt.azimuth}°)</th>`;
             csvHeader.push(`${tgt.name}_${tgt.azimuth}`);
@@ -543,7 +553,7 @@
 
         while (loopD <= endD) {
             let curDateStr = window.getDestIsoString ? window.getDestIsoString(loopD, tz).split('T')[0] : loopD.toISOString().split('T')[0];
-            let { dayTimes, dayAzimuths, dayElevations } = getSolarDayProfile(loopD, configProfile.lat, configProfile.lng, tz);
+            let { dayTimes, dayAzimuths, dayElevations, sunriseStr, sunsetStr, srDurStr, ssDurStr } = getSolarDayProfile(loopD, configProfile.lat, configProfile.lng, tz);
 
             let rowHTML = '';
             let csvRowData = [];
@@ -552,6 +562,14 @@
                 rowHTML += `<td><strong>${curDateStr}</strong></td>`;
                 csvRowData.push(curDateStr);
             }
+
+            let srCsvDur = srDurStr ? ` (${srDurStr.replace('± ', '')})` : '';
+            let ssCsvDur = ssDurStr ? ` (${ssDurStr.replace('± ', '')})` : '';
+            rowHTML += `<td><span class="pill">${sunriseStr} ${srDurStr}</span></td>`;
+            csvRowData.push(`${sunriseStr}${srCsvDur}`);
+            
+            rowHTML += `<td><span class="pill">${sunsetStr} ${ssDurStr}</span></td>`;
+            csvRowData.push(`${sunsetStr}${ssCsvDur}`);
 
             configProfile.headings.forEach(tgt => {
                 let match = findIntersectionIntersection(tgt.azimuth, dayTimes, dayAzimuths, dayElevations);
@@ -759,6 +777,7 @@
                     <option value="simple">Simple Table</option>
                     <option value="table">Minimal Table Only</option>
                     <option value="radar">Radar Graphic Only</option>
+                    <option value="graph">Data Graph Only</option>
                 </select>
             </div>
             <div class="form-group">
@@ -789,6 +808,19 @@
         <div class="url-output-container">
             <textarea id="modal_url_output" readonly rows="4" style="resize: none; flex-grow: 1; padding: 10px; font-family: monospace; border: 1px solid #cbd5e0; border-radius: 6px;"></textarea>
             <button class="btn-primary" onclick="copyEmbedUrl()">Copy</button>
+        </div>
+    </div>
+</div>
+
+<!-- Graph Modal -->
+<div id="graph_modal" class="modal-overlay">
+    <div class="modal-content" style="max-width: none; width: 80%; height: 85vh; display: flex; flex-direction: column;">
+        <div class="modal-header">
+            <h2>Transit Data Graph</h2>
+            <button class="close-btn" onclick="closeGraphModal()">&times;</button>
+        </div>
+        <div style="flex-grow: 1; min-height: 0; position: relative;">
+            <canvas id="transit_chart"></canvas>
         </div>
     </div>
 </div>
@@ -904,6 +936,222 @@
         output.select();
         document.execCommand('copy');
         alert('URL Copied to clipboard!');
+    }
+
+    let transitChart = null;
+    let activeGraphPayload = "";
+
+    function openGraphModal() {
+        const startStr = document.getElementById('start_date').value;
+        const endStr = document.getElementById('end_date').value;
+        
+        if (startStr === endStr) {
+            // Generate full year payload invisibly behind the scenes
+            document.getElementById('graph_modal').classList.add('active');
+            setTimeout(() => {
+                generateFullYearGraphPayload(startStr);
+                renderTransitGraph();
+            }, 50); // slight timeout to allow modal to paint "loading" state if we wanted
+        } else {
+            if (!activeCSVPayload) {
+                alert('No data calculated yet.');
+                return;
+            }
+            activeGraphPayload = activeCSVPayload;
+            document.getElementById('graph_modal').classList.add('active');
+            renderTransitGraph();
+        }
+    }
+    
+    function generateFullYearGraphPayload(baseDateStr) {
+        const selectedId = document.getElementById('location_select').value;
+        const configProfile = window.SOLAR_CONFIG.locations[selectedId];
+        let tz = 'UTC';
+        try { if(typeof tzlookup === 'function') tz = tzlookup(configProfile.lat, configProfile.lng); } catch(e) {}
+
+        let baseDate = new Date(baseDateStr);
+        let year = baseDate.getFullYear();
+        let loopD = new Date(`${year}-01-01T00:00:00`);
+        let endD = new Date(`${year}-12-31T23:59:59`);
+
+        let csvHeader = ['Date', 'Sunrise', 'Sunset'];
+        configProfile.headings.forEach(tgt => csvHeader.push(`${tgt.name}_${tgt.azimuth}`));
+        let csvRows = [csvHeader.join(',')];
+
+        while (loopD <= endD) {
+            let curDateStr = window.getDestIsoString ? window.getDestIsoString(loopD, tz).split('T')[0] : loopD.toISOString().split('T')[0];
+            let { dayTimes, dayAzimuths, dayElevations, sunriseStr, sunsetStr } = getSolarDayProfile(loopD, configProfile.lat, configProfile.lng, tz);
+
+            let csvRowData = [curDateStr, sunriseStr, sunsetStr];
+
+            configProfile.headings.forEach(tgt => {
+                let match = findIntersectionIntersection(tgt.azimuth, dayTimes, dayAzimuths, dayElevations);
+                let timeStr = "N/A";
+                if (match) {
+                    try {
+                        const parts = new Intl.DateTimeFormat('en-US', {
+                            timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+                        }).formatToParts(match);
+                        let p = {};
+                        parts.forEach(part => { p[part.type] = part.value; });
+                        if (p.hour === '24') p.hour = '00';
+                        timeStr = `${p.hour}:${p.minute}:${p.second}`;
+                    } catch(e) {
+                        timeStr = match.toTimeString().split(' ')[0];
+                    }
+                }
+                csvRowData.push(timeStr);
+            });
+            csvRows.push(csvRowData.join(','));
+            loopD.setDate(loopD.getDate() + 1);
+        }
+        activeGraphPayload = csvRows.join('\n');
+    }
+
+    function closeGraphModal() {
+        document.getElementById('graph_modal').classList.remove('active');
+    }
+
+    // Chart plugin to draw a vertical line on today's date
+    const todayMarkerPlugin = {
+        id: 'todayMarker',
+        afterDraw: (chart) => {
+            const tz = 'UTC';
+            const todayStr = new Date().toISOString().split('T')[0]; // Simplify for drawing line
+            const index = chart.data.labels.findIndex(l => l === todayStr);
+            if (index > -1) {
+                const ctx = chart.ctx;
+                const xAxis = chart.scales.x;
+                const yAxis = chart.scales.y;
+                const x = xAxis.getPixelForValue(index);
+                ctx.save();
+                ctx.beginPath();
+                ctx.setLineDash([5, 5]);
+                ctx.moveTo(x, yAxis.top);
+                ctx.lineTo(x, yAxis.bottom);
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#e53e3e';
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+    };
+
+    function renderTransitGraph() {
+        const ctx = document.getElementById('transit_chart').getContext('2d');
+        let lines = activeGraphPayload.trim().split('\n');
+        if (lines.length < 2) return;
+        
+        let headers = lines[0].split(',');
+        let labels = [];
+        let datasetsData = {};
+        for (let i = 1; i < headers.length; i++) {
+            datasetsData[headers[i]] = [];
+        }
+        
+        let globalMin = 24;
+        let globalMax = 0;
+
+        for (let i = 1; i < lines.length; i++) {
+            let cols = lines[i].split(',');
+            labels.push(cols[0]); // Date
+            for (let j = 1; j < cols.length; j++) {
+                let timeStr = cols[j] ? cols[j].trim() : "N/A";
+                if (timeStr === "N/A" || timeStr === "--:--:--") {
+                    datasetsData[headers[j]].push(null);
+                } else {
+                    let baseTime = timeStr.split(' ')[0];
+                    let timeParts = baseTime.split(':');
+                    if (timeParts.length >= 2) {
+                        let hrs = parseInt(timeParts[0], 10);
+                        let mins = parseInt(timeParts[1], 10);
+                        let val = hrs + (mins / 60);
+                        datasetsData[headers[j]].push(val);
+                        if (val < globalMin) globalMin = val;
+                        if (val > globalMax) globalMax = val;
+                    } else {
+                        datasetsData[headers[j]].push(null);
+                    }
+                }
+            }
+        }
+        
+        globalMin = Math.max(0, Math.floor(globalMin - 1));
+        globalMax = Math.min(24, Math.ceil(globalMax + 1));
+
+        let colors = ['#3182ce', '#38a169', '#e53e3e', '#805ad5', '#d69e2e', '#e2e8f0', '#4a5568'];
+        let datasets = [];
+        let idx = 0;
+        
+        for (let i = 1; i < headers.length; i++) {
+            let h = headers[i];
+            let color = (h === "Sunrise") ? "#f6ad55" : (h === "Sunset" ? "#ed8936" : colors[idx % colors.length]);
+            datasets.push({
+                label: h,
+                data: datasetsData[h],
+                borderColor: color,
+                backgroundColor: color,
+                fill: false,
+                tension: 0.1,
+                spanGaps: false
+            });
+            if (h !== "Sunrise" && h !== "Sunset") idx++;
+        }
+        
+        if (transitChart) {
+            transitChart.destroy();
+        }
+        
+        Chart.defaults.color = getComputedStyle(document.body).getPropertyValue('--text-color').trim() || '#333';
+        let gridColor = getComputedStyle(document.body).getPropertyValue('--border-color').trim() || '#e2e8f0';
+
+        transitChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                scales: {
+                    x: {
+                        grid: { color: gridColor }
+                    },
+                    y: {
+                        reverse: true,
+                        min: globalMin,
+                        max: globalMax,
+                        grid: { color: gridColor },
+                        ticks: {
+                            callback: function(value) {
+                                let h = Math.floor(value);
+                                let m = Math.round((value - h) * 60).toString().padStart(2, '0');
+                                return h + ":" + m;
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let val = context.parsed.y;
+                                if (val === null) return "N/A";
+                                let h = Math.floor(val);
+                                let m = Math.round((val - h) * 60).toString().padStart(2, '0');
+                                return context.dataset.label + ': ' + h + ":" + m;
+                            }
+                        }
+                    }
+                }
+            },
+            plugins: [todayMarkerPlugin]
+        });
     }
 </script>
 </body>

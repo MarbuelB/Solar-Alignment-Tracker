@@ -1,8 +1,6 @@
 # Solar Alignment Tracker
 
-A lightweight, zero-backend web application for tracking, calculating, and forecasting the exact local times when the sun intersects specific, user-defined compass azimuth paths. 
-
-Originally built to calculate solar geometry, this tool has been completely generalized into a universal **Solar Alignment Tracker (SAT)**. It is designed to be highly portable and perfectly optimized for embedding seamlessly into corporate intranets or Confluence wikis using iFrames.
+A lightweight, zero-backend web application for tracking, calculating, and forecasting the exact local times when the sun intersects specific, user-defined compass azimuth paths. This universal **Solar Alignment Tracker (SAT)** is designed to be highly portable and perfectly optimized for embedding seamlessly into webpages using iFrames.
 
 ---
 
@@ -10,13 +8,16 @@ Originally built to calculate solar geometry, this tool has been completely gene
 
 * **Instant Client-Side Calculations:** No heavy multi-core server processing required. Uses a high-performance linear interpolation algorithm that solves daily solar crossings in milliseconds directly in the browser.
 * **Dynamic URL Param Routing:** Control layout variations, date ranges, and targeted locations entirely via URL query strings—perfect for creating customized embedded widgets.
-* **Three Context-Aware UI Styles:**
+* **Four Context-Aware UI Styles:**
   * **full:** Interactive desktop dashboard featuring controls, full calendar tables, and a real-time horizon orientation radar.
   * **simple:** Stripped-down embed optimized for inline wiki blocks, rendering only the location name and a clean data table with clear headers.
   * **table:** Extreme minimalist mode showing *only* the calculated times. Automatically hides the date index column if the timeframe is locked to a single day.
+  * **graph:** Full-screen rendering of the interactive Chart.js canvas without any surrounding UI chrome, perfect for dynamic visual embeddings.
 * **Interactive Live/Manual Radar:** Features a 3D-projected compass radar showing the sun's position relative to your defined azimuth markers. Includes dual "Local Time" and "Destination Time" inputs that automatically calculate timezone offsets, alongside a "Live Tracking" toggle.
 * **Seamless Host Styling:** Embed views feature transparent backgrounds and an agnostic system font stack, allowing the parent website's natural layout and design palette to bleed through automatically.
-* **Data Export:** Generate and download a complete `.csv` dataset of all calculated solar transit times directly from the dashboard.
+* **Data Visualization & Export:** 
+  * Click **Plot Data** to open a beautiful, interactive `Chart.js` canvas plotting all your alignment transit times across the date range. If you are viewing a single day, the application automatically calculates and visualizes a massive 365-day tracking array for the entire current year on the fly!
+  * Generate and download a complete `.csv` dataset of all calculated solar transit times directly from the dashboard.
 * **Offline & Intranet Friendly:** Uses a decoupled architecture (`config.js`) that safely bypasses browser security (CORS) blocks, making it safe to run in heavily secured enterprise networks or even completely offline.
 
 ---
@@ -47,7 +48,7 @@ The physical position of the yellow sun dot on the compass and the exact Azimuth
 * **index.html** — Main Application Engine & JavaScript Logic
 * **style.css** — Core Layout & Component Styling Sheets
 * **config.js** — Global Locations & Target Azimuth Configuration
-* **libs/** — Locally bundled third-party libraries (`suncalc.min.js` and `tz.js`)
+* **libs/** — Locally bundled third-party libraries (`suncalc.min.js`, `tz.js`, and `chart.min.js`)
 
 ---
 
@@ -93,7 +94,7 @@ Customize individual instances of the application on the fly using standard brow
 
 | Parameter | Expected Values | Description | Default |
 | :--- | :--- | :--- | :--- |
-| style | `simple`, `table`, `radar` | Alters UI visibility for embedding. `simple` hides the header and actions. `table` strips all layout components except the data grid itself. `radar` shows only the compass graphic and its metrics. | `full` (All UI) |
+| style | `simple`, `table`, `radar`, `graph` | Alters UI visibility for embedding. `simple` hides the header and actions. `table` strips all layout components except the data grid itself. `radar` shows only the compass graphic and its metrics. `graph` shows only the interactive transit time graph. | `full` (All UI) |
 | location | string (id) | Automatically loads a pre-configured profile. | `biozentrum` |
 | name | string | Custom location name to display when using custom lat/lng coordinates. | `Custom Location` |
 | lat | float | Custom latitude. Automatically builds a "Custom" profile on the fly if used with lng and headings. | None |

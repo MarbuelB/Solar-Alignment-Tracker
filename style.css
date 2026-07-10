@@ -38,7 +38,7 @@ body.style-table #results_table thead {
 }
 
 .container {
-    max-width: 1200px;
+    max-width: 95%;
     margin: 0 auto;
     background: var(--card-bg);
     padding: 25px;
@@ -282,6 +282,29 @@ body.style-radar .compass-card {
 }
 body.style-radar .radar-controls {
     display: none !important;
+}
+
+/* Graph style overrides */
+body.style-graph {
+    padding: 0;
+    overflow: hidden;
+}
+body.style-graph .container {
+    display: none !important;
+}
+body.style-graph #graph_modal {
+    background: transparent;
+}
+body.style-graph #graph_modal .modal-content {
+    width: 100%;
+    max-width: none;
+    height: 100vh;
+    border-radius: 0;
+    padding: 10px;
+    box-shadow: none;
+}
+body.style-graph #graph_modal .modal-header {
+    display: none;
 }
 
 html { background: transparent !important; }
