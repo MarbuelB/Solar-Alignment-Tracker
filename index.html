@@ -41,7 +41,13 @@
 </script>
 
 <div class="container">
-    <h1 class="full-ui-element" style="margin-top:0;">Solar Alignment Tracker</h1>
+    <div class="full-ui-element" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h1 style="margin: 0;">Solar Alignment Tracker</h1>
+        <div class="actions" style="margin: 0;">
+            <button class="btn-secondary" onclick="exportCSV()">Export Data</button>
+            <button class="btn-primary" style="background-color: #48bb78; border-color: #48bb78;" onclick="openUrlModal()">Create URL</button>
+        </div>
+    </div>
     
     <div id="simple_location_title" class="location-header"></div>
     
@@ -52,11 +58,11 @@
         </div>
         <div class="form-group">
             <label for="start_date">Start Date</label>
-            <input type="date" id="start_date">
+            <input type="date" id="start_date" onblur="calculateSolarTransits()" onkeydown="if(event.key === 'Enter') this.blur();">
         </div>
         <div class="form-group">
             <label for="end_date">End Date</label>
-            <input type="date" id="end_date">
+            <input type="date" id="end_date" onblur="calculateSolarTransits()" onkeydown="if(event.key === 'Enter') this.blur();">
         </div>
     </div>
 
@@ -73,12 +79,6 @@
             <label for="custom_headings">Headings (Name:Azimuth, comma sep)</label>
             <input type="text" id="custom_headings" placeholder="e.g. Az1:90, 180, 270" onchange="updateCustomProfile()">
         </div>
-    </div>
-
-    <div class="full-ui-element actions">
-        <button class="btn-primary" onclick="calculateSolarTransits()">Refresh Data</button>
-        <button class="btn-secondary" onclick="exportCSV()">Export Data</button>
-        <button class="btn-secondary" onclick="openUrlModal()">Create URL</button>
     </div>
 
     <div class="dashboard-layout">
@@ -98,11 +98,11 @@
                 <div class="radar-time-inputs">
                     <div style="display: flex; align-items: center; justify-content: space-between;">
                         <label for="radar_local_time" style="font-size: 0.75rem; margin:0;">Local Time (You)</label>
-                        <input type="datetime-local" id="radar_local_time" class="radar-time-input" style="width: 60%;" disabled onchange="handleTimeEdit('local')">
+                        <input type="datetime-local" id="radar_local_time" class="radar-time-input" style="width: 60%;" disabled onblur="handleTimeEdit('local')" onkeydown="if(event.key === 'Enter') this.blur();">
                     </div>
                     <div style="display: flex; align-items: center; justify-content: space-between;">
                         <label for="radar_dest_time" style="font-size: 0.75rem; margin:0;">Dest. Time (GPS)</label>
-                        <input type="datetime-local" id="radar_dest_time" class="radar-time-input" style="width: 60%;" disabled onchange="handleTimeEdit('dest')">
+                        <input type="datetime-local" id="radar_dest_time" class="radar-time-input" style="width: 60%;" disabled onblur="handleTimeEdit('dest')" onkeydown="if(event.key === 'Enter') this.blur();">
                     </div>
                 </div>
             </div>
@@ -414,6 +414,7 @@
         localActiveHeadings = window.SOLAR_CONFIG.locations["custom"].headings;
         document.getElementById('simple_location_title').innerText = `Location: Custom Location`;
 
+        cachedRadarHeadings.locationId = null; // force invalidate radar cache
         calculateSolarTransits();
         updateLiveRadarPosition();
     }
@@ -634,8 +635,10 @@
         
         // Clean inner layout loops - gray scale text label layers have been permanently wiped
         headingGroup.innerHTML = `
-            <circle cx="100" cy="100" r="53" fill="none" stroke="var(--border-color)" stroke-width="1" stroke-dasharray="3,3" opacity="0.6"/>
-            <circle cx="100" cy="100" r="27" fill="none" stroke="var(--border-color)" stroke-width="1" stroke-dasharray="3,3" opacity="0.6"/>
+            <circle cx="100" cy="100" r="48" fill="none" stroke="#a0aec0" stroke-width="1" stroke-dasharray="3,3"/>
+            <circle cx="100" cy="100" r="24" fill="none" stroke="#a0aec0" stroke-width="1" stroke-dasharray="3,3"/>
+            <text x="148" y="98" font-size="5" fill="#718096" text-anchor="middle" transform="rotate(90, 148, 98)">30°</text>
+            <text x="124" y="98" font-size="5" fill="#718096" text-anchor="middle" transform="rotate(90, 124, 98)">60°</text>
         `;
         
         let renderHeadings = [];
